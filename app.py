@@ -150,7 +150,10 @@ if uploaded and st.button("変換する"):
             # xml: 指定タグ配下のテキストのみ変換
             try:
                 xml_bytes = convert_xml_bytes(
-                    data, xml_tag, lambda t: convert_text(t, tagger, expand_odoriji)
+                    data,
+                    xml_tag,
+                    lambda t: convert_text(t, tagger, expand_odoriji),
+                    pre_expand_odoriji=expand_odoriji,
                 )
             except Exception as exc:
                 st.error(f"XMLの読み込みに失敗しました: {exc}")

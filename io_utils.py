@@ -85,6 +85,76 @@ def _register_namespaces(xml_text: str) -> None:
             ET.register_namespace(prefix, uri)
 
 
+def _is_hiragana(ch: str) -> bool:
+    return 0x3041 <= ord(ch) <= 0x3096
+
+
+def _dakuten_map() -> dict[str, str]:
+    return {
+        "か": "が",
+        "き": "ぎ",
+        "く": "ぐ",
+        "け": "げ",
+        "こ": "ご",
+        "さ": "ざ",
+        "し": "じ",
+        "す": "ず",
+        "せ": "ぜ",
+        "そ": "ぞ",
+        "た": "だ",
+        "ち": "ぢ",
+        "つ": "づ",
+        "て": "で",
+        "と": "ど",
+        "は": "ば",
+        "ひ": "び",
+        "ふ": "ぶ",
+        "へ": "べ",
+        "ほ": "ぼ",
+        "う": "ゔ",
+    }
+
+
+def _pre_expand_odoriji_in_element(elem: ET.Element) -> None:
+    # <l>内の全テキストをタグ無視で走査し、踊り字を事前展開する
+    dakuten = _dakuten_map()
+    prev = ""
+
+    def process_text(text: str) -> str:
+        nonlocal prev
+        if not text:
+            return text
+        out = []
+        for ch in text:
+            if ch in ("ゝ", "ヽ"):
+                if _is_hiragana(prev):
+                    out.append(prev)
+                else:
+                    out.append(ch)
+                continue
+            if ch in ("ゞ", "ヾ"):
+                if _is_hiragana(prev):
+                    replaced = dakuten.get(prev, prev)
+                    out.append(replaced)
+                    prev = replaced
+                else:
+                    out.append(ch)
+                continue
+            out.append(ch)
+            prev = ch
+        return "".join(out)
+
+    def walk(node: ET.Element) -> None:
+        if node.text:
+            node.text = process_text(node.text)
+        for child in list(node):
+            walk(child)
+            if child.tail:
+                child.tail = process_text(child.tail)
+
+    walk(elem)
+
+
 def _convert_text_in_element(elem: ET.Element, convert_func) -> None:
     # 指定要素配下のテキストとtailを再帰的に変換
     if elem.text:
@@ -99,6 +169,7 @@ def convert_xml_bytes(
     data: bytes,
     text_tag: str,
     convert_func,
+    pre_expand_odoriji: bool = False,
 ) -> bytes:
     # XMLを読み込み、指定タグ配下のテキストのみを変換する
     try:
@@ -113,6 +184,8 @@ def convert_xml_bytes(
     for elem in root.iter():
         if _local_name(elem.tag) != text_tag:
             continue
+        if pre_expand_odoriji:
+            _pre_expand_odoriji_in_element(elem)
         _convert_text_in_element(elem, convert_func)
 
     out = io.BytesIO()
