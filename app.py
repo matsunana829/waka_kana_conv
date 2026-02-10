@@ -54,14 +54,6 @@ with st.sidebar:
         "mecabrcのパス（任意）",
         value=os.environ.get("MECABRC", ""),
     )
-    reading_field = st.number_input(
-        "読みフィールド番号（UniDic）",
-        min_value=0,
-        max_value=30,
-        value=20,
-        step=1,
-        help="辞書の読みフィールド位置。例: 20 を推奨。違和感があれば 6/7/9/20 を試してください。",
-    )
     expand_odoriji = st.checkbox(
         "踊り字（ゝゞヽヾ）を展開する",
         value=True,
@@ -82,7 +74,7 @@ uploaded = st.file_uploader(
 if uploaded and st.button("変換する"):
     try:
         # MeCabの初期化
-        tagger = create_tagger(dic_dir, mecabrc_path or None, int(reading_field))
+        tagger = create_tagger(dic_dir, mecabrc_path or None, 20)
     except Exception as exc:
         st.error(f"MeCabの初期化に失敗しました: {exc}")
         st.stop()
