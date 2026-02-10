@@ -17,18 +17,15 @@ from mecab_utils import convert_text, create_tagger
 
 
 def _ext(name: str) -> str:
+    # 拡張子を小文字で返す
     return os.path.splitext(name.lower())[1]
-
-
-def _convert_plain_text(data: bytes, tagger) -> str:
-    text = read_text_bytes(data)
-    return convert_text(text, tagger)
 
 
 def _as_output_bytes(
     output_format: str,
     texts: List[str],
 ) -> Tuple[bytes, str]:
+    # 指定形式に合わせて出力バイト列とMIMEを返す
     if output_format == "txt":
         return texts_to_txt_bytes(texts), "text/plain"
     if output_format == "csv":
@@ -38,6 +35,7 @@ def _as_output_bytes(
     raise ValueError(f"Unsupported output format: {output_format}")
 
 
+# 画面設定とタイトル
 st.set_page_config(page_title="仮名変換ツール", layout="wide")
 st.title("仮名変換ツール")
 
@@ -45,6 +43,7 @@ st.markdown(
     "和歌本文を MeCab + 和歌UniDic で形態素解析し、読み（カタカナ）を抽出してひらがな化します。"
 )
 
+# サイドバー設定
 with st.sidebar:
     st.header("設定")
     dic_dir = st.text_input(
@@ -73,6 +72,7 @@ with st.sidebar:
     xml_tag = st.text_input("XML本文タグ名", value="text")
     st.caption("docx入力は txt と docx を両方出力します。")
 
+# 入力ファイルのアップロード
 uploaded = st.file_uploader(
     "入力ファイル (.txt / .docx / .csv / .xml)",
     type=["txt", "docx", "csv", "xml"],
@@ -81,20 +81,22 @@ uploaded = st.file_uploader(
 
 if uploaded and st.button("変換する"):
     try:
+        # MeCabの初期化
         tagger = create_tagger(dic_dir, mecabrc_path or None, int(reading_field))
     except Exception as exc:
         st.error(f"MeCabの初期化に失敗しました: {exc}")
         st.stop()
 
     for file in uploaded:
+        # ファイルごとに処理
         name = file.name
         data = file.read()
         ext = _ext(name)
 
         st.subheader(name)
-        sample_text = ""
 
         if ext == ".txt":
+            # txt: 全文を変換
             text = read_text_bytes(data)
             converted = convert_text(text, tagger, expand_odoriji)
             out_bytes, mime = _as_output_bytes(output_format, [converted])
@@ -102,7 +104,7 @@ if uploaded and st.button("変換する"):
             st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
 
         elif ext == ".docx":
-            # Sample from first N paragraphs
+            # docx: 段落ごとに変換してtxt/docx両方出力
             txt_bytes, docx_bytes = convert_docx_bytes(
                 data, lambda t: convert_text(t, tagger, expand_odoriji)
             )
@@ -121,6 +123,7 @@ if uploaded and st.button("変換する"):
             )
 
         elif ext == ".csv":
+            # csv: 指定列のみ変換して構造を保持
             try:
                 df = convert_csv_bytes(
                     data, csv_column, lambda t: convert_text(t, tagger, expand_odoriji)
@@ -128,7 +131,6 @@ if uploaded and st.button("変換する"):
             except KeyError as exc:
                 st.error(str(exc))
                 continue
-            # Sample from first N rows
             converted_texts = df[csv_column].astype(str).tolist()
             if output_format == "csv":
                 out_bytes = write_csv(df)
@@ -145,6 +147,7 @@ if uploaded and st.button("変換する"):
                 st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
 
         elif ext == ".xml":
+            # xml: 指定タグ配下のテキストのみ変換
             try:
                 xml_bytes = convert_xml_bytes(
                     data, xml_tag, lambda t: convert_text(t, tagger, expand_odoriji)
@@ -152,9 +155,9 @@ if uploaded and st.button("変換する"):
             except Exception as exc:
                 st.error(f"XMLの読み込みに失敗しました: {exc}")
                 continue
-            # Sample from first N matching tags (namespace-aware)
 
             if output_format == "xml":
+                # xmlとして出力
                 out_name = f"{os.path.splitext(name)[0]}.xml"
                 st.download_button(
                     "ダウンロード",
@@ -163,7 +166,7 @@ if uploaded and st.button("変換する"):
                     mime="application/xml",
                 )
             else:
-                # Extract texts for alternative formats
+                # xml以外の場合は本文だけを抽出して出力
                 try:
                     root = xml_bytes.decode("utf-8")
                 except UnicodeDecodeError:

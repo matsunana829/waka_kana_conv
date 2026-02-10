@@ -5,12 +5,13 @@ from typing import Optional
 import MeCab
 
 
+# カタカナ/ひらがな判定用の正規表現
 _KATAKANA_RE = re.compile(r"^[\u30A1-\u30FA\u30FC]+$")
 _HIRAGANA_RE = re.compile(r"^[\u3041-\u3096\u309D\u309E]+$")
 
 
 def _kata_to_hira(text: str) -> str:
-    # Convert katakana to hiragana; leave other chars as-is.
+    # カタカナをひらがなに変換（それ以外は保持）
     result = []
     for ch in text:
         code = ord(ch)
@@ -22,7 +23,7 @@ def _kata_to_hira(text: str) -> str:
 
 
 def _pick_reading(feature: str, surface: str) -> str:
-    # We emit "%m\t%f[reading]" via -F, so feature already holds the reading.
+    # -Fで「表層\t読み」形式にしているため、featureが読みになっている想定
     if not feature or feature == "*" or feature == surface:
         return surface
     return feature
@@ -76,7 +77,7 @@ def _dakuten_map() -> dict[str, str]:
 
 
 def _expand_odoriji(text: str) -> str:
-    # Post-conversion odoriji expansion (handles remaining ゝゞヽヾ).
+    # かな変換後の踊り字展開（ゝゞヽヾの残りを処理）
     dakuten = _dakuten_map()
     result = []
     prev = ""
@@ -96,7 +97,7 @@ def _is_hiragana(ch: str) -> bool:
 
 
 def _pre_expand_odoriji(text: str) -> str:
-    # Pre-Mecab expansion for simple cases (when previous char is already hiragana).
+    # MeCab前の踊り字展開（前の文字がひらがなの場合のみ）
     dakuten = _dakuten_map()
     result = []
     prev = ""
@@ -140,7 +141,7 @@ def create_tagger(
         args.append(f'-r "{mecabrc}"')
     if dic_dir:
         args.append(f'-d "{dic_dir}"')
-    # UniDic Waka: use specified reading field (default: %f[9]).
+    # UniDic Waka: 指定された読みフィールドを使う（既定は %f[9]）
     args.append(f'-F "%m\\t%f[{reading_field}]\\n"')
     args.append('-U "%m\\t%m\\n"')
     args.append('-E "EOS\\n"')
@@ -152,11 +153,11 @@ def convert_text(
     tagger: MeCab.Tagger,
     expand_odoriji: bool = False,
 ) -> str:
-    # Optional pre-expansion for odoriji before morphological analysis.
+    # 形態素解析の前に踊り字を簡易展開（有効時のみ）
     if expand_odoriji:
         text = _pre_expand_odoriji(text)
 
-    # MeCab returns a string with "surface\tfeature" lines, ending with "EOS".
+    # MeCabの出力は「表層\t読み」形式（EOSで終わる）
     parsed = tagger.parse(text)
     if parsed is None:
         return text
@@ -170,7 +171,7 @@ def convert_text(
             out.append(line)
             continue
         surface, feature = line.split("\t", 1)
-        # Repeat the previous morpheme for the ideographic iteration mark.
+        # 〳〵は直前の形態素読みを繰り返す
         if surface == "〳〵" and prev_reading:
             out.append(prev_reading)
             continue
@@ -180,5 +181,6 @@ def convert_text(
 
     hira = _kata_to_hira("".join(out))
     if expand_odoriji:
+        # かな化後に残った踊り字を展開
         hira = _expand_odoriji(hira)
     return hira
