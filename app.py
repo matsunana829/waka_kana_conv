@@ -68,6 +68,18 @@ with st.sidebar:
         value=True,
         help="踊り字を直前文字で展開します。",
     )
+    debug_enabled = st.checkbox(
+        "デバッグ表示（MeCab出力）",
+        value=False,
+        help="各ファイルの先頭から抽出したサンプルの解析結果を表示します。",
+    )
+    debug_lines = st.number_input(
+        "デバッグ表示行数",
+        min_value=1,
+        max_value=200,
+        value=10,
+        step=1,
+    )
     output_format = st.selectbox("出力形式", ["txt", "csv", "xml"])
     csv_column = st.text_input("CSV本文列名", value="text")
     xml_tag = st.text_input("XML本文タグ名", value="text")
@@ -92,14 +104,28 @@ if uploaded and st.button("変換する"):
         ext = _ext(name)
 
         st.subheader(name)
+        sample_text = ""
 
         if ext == ".txt":
-            converted = convert_text(read_text_bytes(data), tagger, expand_odoriji)
+            text = read_text_bytes(data)
+            sample_text = "\n".join(text.splitlines()[: max(1, int(debug_lines))])
+            converted = convert_text(text, tagger, expand_odoriji)
             out_bytes, mime = _as_output_bytes(output_format, [converted])
             out_name = f"{os.path.splitext(name)[0]}.{output_format}"
             st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
 
         elif ext == ".docx":
+            # Sample from first N paragraphs
+            try:
+                import io as _io
+                from docx import Document as _Document
+
+                _doc = _Document(_io.BytesIO(data))
+                sample_text = "\n".join(
+                    [p.text for p in _doc.paragraphs[: max(1, int(debug_lines))]]
+                )
+            except Exception:
+                sample_text = ""
             txt_bytes, docx_bytes = convert_docx_bytes(
                 data, lambda t: convert_text(t, tagger, expand_odoriji)
             )
@@ -125,6 +151,13 @@ if uploaded and st.button("変換する"):
             except KeyError as exc:
                 st.error(str(exc))
                 continue
+            # Sample from first N rows
+            try:
+                sample_text = "\n".join(
+                    df[csv_column].astype(str).tolist()[: max(1, int(debug_lines))]
+                )
+            except Exception:
+                sample_text = ""
             converted_texts = df[csv_column].astype(str).tolist()
             if output_format == "csv":
                 out_bytes = write_csv(df)
@@ -148,6 +181,24 @@ if uploaded and st.button("変換する"):
             except Exception as exc:
                 st.error(f"XMLの読み込みに失敗しました: {exc}")
                 continue
+            # Sample from first N matching tags (namespace-aware)
+            try:
+                import xml.etree.ElementTree as ET
+
+                def _local_name(tag: str) -> str:
+                    return tag.split("}", 1)[1] if "}" in tag else tag
+
+                parsed = ET.fromstring(data)
+                collected = []
+                for elem in parsed.iter():
+                    if _local_name(elem.tag) != xml_tag:
+                        continue
+                    collected.append("".join(elem.itertext()))
+                    if len(collected) >= int(debug_lines):
+                        break
+                sample_text = "\n".join(collected)
+            except Exception:
+                sample_text = ""
 
             if output_format == "xml":
                 out_name = f"{os.path.splitext(name)[0]}.xml"
@@ -180,3 +231,15 @@ if uploaded and st.button("変換する"):
 
         else:
             st.warning("未対応の拡張子です。")
+
+        if debug_enabled and sample_text:
+            try:
+                parsed = tagger.parse(sample_text)
+                lines = [l for l in parsed.splitlines() if l][: int(debug_lines)]
+                st.text_area(
+                    "MeCab出力（先頭）",
+                    value="\n".join(lines),
+                    height=240,
+                )
+            except Exception as exc:
+                st.error(f"デバッグ表示に失敗しました: {exc}")
