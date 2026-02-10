@@ -146,14 +146,17 @@ if uploaded and st.button("変換する"):
                     root = xml_bytes.decode("utf-8")
                 except UnicodeDecodeError:
                     root = xml_bytes.decode("utf-8", errors="replace")
-                # Naive extraction for alternate outputs
                 texts = []
                 import xml.etree.ElementTree as ET
 
+                def _local_name(tag: str) -> str:
+                    return tag.split("}", 1)[1] if "}" in tag else tag
+
                 parsed = ET.fromstring(root)
-                for elem in parsed.iter(xml_tag):
-                    if elem.text:
-                        texts.append(elem.text)
+                for elem in parsed.iter():
+                    if _local_name(elem.tag) != xml_tag:
+                        continue
+                    texts.append("".join(elem.itertext()))
                 out_bytes, mime = _as_output_bytes(output_format, texts)
                 out_name = f"{os.path.splitext(name)[0]}.{output_format}"
                 st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)

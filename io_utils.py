@@ -63,6 +63,21 @@ def convert_csv_bytes(
     return df
 
 
+def _local_name(tag: str) -> str:
+    if "}" in tag:
+        return tag.split("}", 1)[1]
+    return tag
+
+
+def _convert_text_in_element(elem: ET.Element, convert_func) -> None:
+    if elem.text:
+        elem.text = convert_func(elem.text)
+    for child in list(elem):
+        _convert_text_in_element(child, convert_func)
+        if child.tail:
+            child.tail = convert_func(child.tail)
+
+
 def convert_xml_bytes(
     data: bytes,
     text_tag: str,
@@ -71,9 +86,11 @@ def convert_xml_bytes(
     tree = ET.ElementTree(ET.fromstring(data))
     root = tree.getroot()
 
-    for elem in root.iter(text_tag):
-        if elem.text:
-            elem.text = convert_func(elem.text)
+    for elem in root.iter():
+        if _local_name(elem.tag) != text_tag:
+            continue
+        _convert_text_in_element(elem, convert_func)
+
     out = io.BytesIO()
     tree.write(out, encoding="utf-8", xml_declaration=True)
     return out.getvalue()
