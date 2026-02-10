@@ -55,6 +55,19 @@ with st.sidebar:
         "mecabrcのパス（任意）",
         value=os.environ.get("MECABRC", ""),
     )
+    reading_field = st.number_input(
+        "読みフィールド番号（UniDic）",
+        min_value=0,
+        max_value=30,
+        value=9,
+        step=1,
+        help="辞書の読みフィールド位置。例: 9 を推奨。違和感があれば 6/7/9 を試してください。",
+    )
+    expand_odoriji = st.checkbox(
+        "踊り字（ゝゞヽヾ）を展開する",
+        value=True,
+        help="踊り字を直前文字で展開します。",
+    )
     output_format = st.selectbox("出力形式", ["txt", "csv", "xml"])
     csv_column = st.text_input("CSV本文列名", value="text")
     xml_tag = st.text_input("XML本文タグ名", value="text")
@@ -68,7 +81,7 @@ uploaded = st.file_uploader(
 
 if uploaded and st.button("変換する"):
     try:
-        tagger = create_tagger(dic_dir, mecabrc_path or None)
+        tagger = create_tagger(dic_dir, mecabrc_path or None, int(reading_field))
     except Exception as exc:
         st.error(f"MeCabの初期化に失敗しました: {exc}")
         st.stop()
@@ -81,14 +94,14 @@ if uploaded and st.button("変換する"):
         st.subheader(name)
 
         if ext == ".txt":
-            converted = _convert_plain_text(data, tagger)
+            converted = convert_text(read_text_bytes(data), tagger, expand_odoriji)
             out_bytes, mime = _as_output_bytes(output_format, [converted])
             out_name = f"{os.path.splitext(name)[0]}.{output_format}"
             st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
 
         elif ext == ".docx":
             txt_bytes, docx_bytes = convert_docx_bytes(
-                data, lambda t: convert_text(t, tagger)
+                data, lambda t: convert_text(t, tagger, expand_odoriji)
             )
             base = os.path.splitext(name)[0]
             st.download_button(
@@ -106,7 +119,9 @@ if uploaded and st.button("変換する"):
 
         elif ext == ".csv":
             try:
-                df = convert_csv_bytes(data, csv_column, lambda t: convert_text(t, tagger))
+                df = convert_csv_bytes(
+                    data, csv_column, lambda t: convert_text(t, tagger, expand_odoriji)
+                )
             except KeyError as exc:
                 st.error(str(exc))
                 continue
@@ -127,7 +142,9 @@ if uploaded and st.button("変換する"):
 
         elif ext == ".xml":
             try:
-                xml_bytes = convert_xml_bytes(data, xml_tag, lambda t: convert_text(t, tagger))
+                xml_bytes = convert_xml_bytes(
+                    data, xml_tag, lambda t: convert_text(t, tagger, expand_odoriji)
+                )
             except Exception as exc:
                 st.error(f"XMLの読み込みに失敗しました: {exc}")
                 continue

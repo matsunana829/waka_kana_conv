@@ -21,12 +21,71 @@ def _kata_to_hira(text: str) -> str:
 
 
 def _pick_reading(feature: str, surface: str) -> str:
-    parts = feature.split(",")
-    # Heuristic: choose the first katakana-like field that is not "*".
-    for part in parts:
-        if part != "*" and _KATAKANA_RE.match(part):
-            return part
-    return surface
+    if not feature or feature == "*" or feature == surface:
+        return surface
+    return feature
+
+
+def _dakuten_map() -> dict[str, str]:
+    return {
+        "か": "が",
+        "き": "ぎ",
+        "く": "ぐ",
+        "け": "げ",
+        "こ": "ご",
+        "さ": "ざ",
+        "し": "じ",
+        "す": "ず",
+        "せ": "ぜ",
+        "そ": "ぞ",
+        "た": "だ",
+        "ち": "ぢ",
+        "つ": "づ",
+        "て": "で",
+        "と": "ど",
+        "は": "ば",
+        "ひ": "び",
+        "ふ": "ぶ",
+        "へ": "べ",
+        "ほ": "ぼ",
+        "う": "ゔ",
+        "カ": "ガ",
+        "キ": "ギ",
+        "ク": "グ",
+        "ケ": "ゲ",
+        "コ": "ゴ",
+        "サ": "ザ",
+        "シ": "ジ",
+        "ス": "ズ",
+        "セ": "ゼ",
+        "ソ": "ゾ",
+        "タ": "ダ",
+        "チ": "ヂ",
+        "ツ": "ヅ",
+        "テ": "デ",
+        "ト": "ド",
+        "ハ": "バ",
+        "ヒ": "ビ",
+        "フ": "ブ",
+        "ヘ": "ベ",
+        "ホ": "ボ",
+        "ウ": "ヴ",
+    }
+
+
+def _expand_odoriji(text: str) -> str:
+    dakuten = _dakuten_map()
+    result = []
+    prev = ""
+    for ch in text:
+        if ch in ("ゝ", "ヽ"):
+            result.append(prev if prev else ch)
+        elif ch in ("ゞ", "ヾ"):
+            result.append(dakuten.get(prev, prev if prev else ch))
+        else:
+            result.append(ch)
+            prev = ch
+    return "".join(result)
 
 
 def _default_mecabrc() -> Optional[str]:
@@ -43,17 +102,29 @@ def _default_mecabrc() -> Optional[str]:
     return None
 
 
-def create_tagger(dic_dir: Optional[str], mecabrc_path: Optional[str] = None) -> MeCab.Tagger:
+def create_tagger(
+    dic_dir: Optional[str],
+    mecabrc_path: Optional[str] = None,
+    reading_field: int = 9,
+) -> MeCab.Tagger:
     args = []
     mecabrc = mecabrc_path or _default_mecabrc()
     if mecabrc:
         args.append(f'-r "{mecabrc}"')
     if dic_dir:
         args.append(f'-d "{dic_dir}"')
+    # UniDic Waka: use specified reading field (default: %f[9]).
+    args.append(f'-F "%m\\t%f[{reading_field}]\\n"')
+    args.append('-U "%m\\t%m\\n"')
+    args.append('-E "EOS\\n"')
     return MeCab.Tagger(" ".join(args))
 
 
-def convert_text(text: str, tagger: MeCab.Tagger) -> str:
+def convert_text(
+    text: str,
+    tagger: MeCab.Tagger,
+    expand_odoriji: bool = False,
+) -> str:
     # MeCab returns a string with "surface\tfeature" lines, ending with "EOS".
     parsed = tagger.parse(text)
     if parsed is None:
@@ -70,4 +141,7 @@ def convert_text(text: str, tagger: MeCab.Tagger) -> str:
         reading = _pick_reading(feature, surface)
         out.append(reading)
 
-    return _kata_to_hira("".join(out))
+    hira = _kata_to_hira("".join(out))
+    if expand_odoriji:
+        hira = _expand_odoriji(hira)
+    return hira

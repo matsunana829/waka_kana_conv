@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 from typing import Iterable, Tuple
+import re
 import xml.etree.ElementTree as ET
 
 import pandas as pd
@@ -69,6 +70,15 @@ def _local_name(tag: str) -> str:
     return tag
 
 
+def _register_namespaces(xml_text: str) -> None:
+    for match in re.finditer(r'xmlns(?::([\\w.-]+))?="([^"]+)"', xml_text):
+        prefix, uri = match.group(1), match.group(2)
+        if prefix is None:
+            ET.register_namespace("", uri)
+        else:
+            ET.register_namespace(prefix, uri)
+
+
 def _convert_text_in_element(elem: ET.Element, convert_func) -> None:
     if elem.text:
         elem.text = convert_func(elem.text)
@@ -83,6 +93,12 @@ def convert_xml_bytes(
     text_tag: str,
     convert_func,
 ) -> bytes:
+    try:
+        xml_text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        xml_text = data.decode("utf-8", errors="replace")
+    _register_namespaces(xml_text)
+
     tree = ET.ElementTree(ET.fromstring(data))
     root = tree.getroot()
 
