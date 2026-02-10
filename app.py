@@ -1,0 +1,162 @@
+import os
+from typing import List, Tuple
+
+import streamlit as st
+
+from io_utils import (
+    convert_csv_bytes,
+    convert_docx_bytes,
+    convert_xml_bytes,
+    read_text_bytes,
+    texts_to_csv_bytes,
+    texts_to_txt_bytes,
+    texts_to_xml_bytes,
+    write_csv,
+)
+from mecab_utils import convert_text, create_tagger
+
+
+def _ext(name: str) -> str:
+    return os.path.splitext(name.lower())[1]
+
+
+def _convert_plain_text(data: bytes, tagger) -> str:
+    text = read_text_bytes(data)
+    return convert_text(text, tagger)
+
+
+def _as_output_bytes(
+    output_format: str,
+    texts: List[str],
+) -> Tuple[bytes, str]:
+    if output_format == "txt":
+        return texts_to_txt_bytes(texts), "text/plain"
+    if output_format == "csv":
+        return texts_to_csv_bytes(texts), "text/csv"
+    if output_format == "xml":
+        return texts_to_xml_bytes(texts), "application/xml"
+    raise ValueError(f"Unsupported output format: {output_format}")
+
+
+st.set_page_config(page_title="仮名変換ツール", layout="wide")
+st.title("仮名変換ツール")
+
+st.markdown(
+    "和歌本文を MeCab + 和歌UniDic で形態素解析し、読み（カタカナ）を抽出してひらがな化します。"
+)
+
+with st.sidebar:
+    st.header("設定")
+    dic_dir = st.text_input(
+        "和歌UniDicのパス",
+        value=os.path.join(os.getcwd(), "unidic-waka"),
+    )
+    mecabrc_path = st.text_input(
+        "mecabrcのパス（任意）",
+        value=os.environ.get("MECABRC", ""),
+    )
+    output_format = st.selectbox("出力形式", ["txt", "csv", "xml"])
+    csv_column = st.text_input("CSV本文列名", value="text")
+    xml_tag = st.text_input("XML本文タグ名", value="text")
+    st.caption("docx入力は txt と docx を両方出力します。")
+
+uploaded = st.file_uploader(
+    "入力ファイル (.txt / .docx / .csv / .xml)",
+    type=["txt", "docx", "csv", "xml"],
+    accept_multiple_files=True,
+)
+
+if uploaded and st.button("変換する"):
+    try:
+        tagger = create_tagger(dic_dir, mecabrc_path or None)
+    except Exception as exc:
+        st.error(f"MeCabの初期化に失敗しました: {exc}")
+        st.stop()
+
+    for file in uploaded:
+        name = file.name
+        data = file.read()
+        ext = _ext(name)
+
+        st.subheader(name)
+
+        if ext == ".txt":
+            converted = _convert_plain_text(data, tagger)
+            out_bytes, mime = _as_output_bytes(output_format, [converted])
+            out_name = f"{os.path.splitext(name)[0]}.{output_format}"
+            st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
+
+        elif ext == ".docx":
+            txt_bytes, docx_bytes = convert_docx_bytes(
+                data, lambda t: convert_text(t, tagger)
+            )
+            base = os.path.splitext(name)[0]
+            st.download_button(
+                "TXTをダウンロード",
+                data=txt_bytes,
+                file_name=f"{base}.txt",
+                mime="text/plain",
+            )
+            st.download_button(
+                "DOCXをダウンロード",
+                data=docx_bytes,
+                file_name=f"{base}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+
+        elif ext == ".csv":
+            try:
+                df = convert_csv_bytes(data, csv_column, lambda t: convert_text(t, tagger))
+            except KeyError as exc:
+                st.error(str(exc))
+                continue
+            converted_texts = df[csv_column].astype(str).tolist()
+            if output_format == "csv":
+                out_bytes = write_csv(df)
+                out_name = f"{os.path.splitext(name)[0]}.csv"
+                st.download_button(
+                    "ダウンロード",
+                    data=out_bytes,
+                    file_name=out_name,
+                    mime="text/csv",
+                )
+            else:
+                out_bytes, mime = _as_output_bytes(output_format, converted_texts)
+                out_name = f"{os.path.splitext(name)[0]}.{output_format}"
+                st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
+
+        elif ext == ".xml":
+            try:
+                xml_bytes = convert_xml_bytes(data, xml_tag, lambda t: convert_text(t, tagger))
+            except Exception as exc:
+                st.error(f"XMLの読み込みに失敗しました: {exc}")
+                continue
+
+            if output_format == "xml":
+                out_name = f"{os.path.splitext(name)[0]}.xml"
+                st.download_button(
+                    "ダウンロード",
+                    data=xml_bytes,
+                    file_name=out_name,
+                    mime="application/xml",
+                )
+            else:
+                # Extract texts for alternative formats
+                try:
+                    root = xml_bytes.decode("utf-8")
+                except UnicodeDecodeError:
+                    root = xml_bytes.decode("utf-8", errors="replace")
+                # Naive extraction for alternate outputs
+                texts = []
+                import xml.etree.ElementTree as ET
+
+                parsed = ET.fromstring(root)
+                for elem in parsed.iter(xml_tag):
+                    if elem.text:
+                        texts.append(elem.text)
+                out_bytes, mime = _as_output_bytes(output_format, texts)
+                out_name = f"{os.path.splitext(name)[0]}.{output_format}"
+                st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
+
+        else:
+            st.warning("未対応の拡張子です。")
