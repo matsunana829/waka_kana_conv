@@ -6,6 +6,7 @@ import MeCab
 
 
 _KATAKANA_RE = re.compile(r"^[\u30A1-\u30FA\u30FC]+$")
+_HIRAGANA_RE = re.compile(r"^[\u3041-\u3096\u309D\u309E]+$")
 
 
 def _kata_to_hira(text: str) -> str:
@@ -21,6 +22,7 @@ def _kata_to_hira(text: str) -> str:
 
 
 def _pick_reading(feature: str, surface: str) -> str:
+    # We emit "%m\t%f[reading]" via -F, so feature already holds the reading.
     if not feature or feature == "*" or feature == surface:
         return surface
     return feature
@@ -74,6 +76,7 @@ def _dakuten_map() -> dict[str, str]:
 
 
 def _expand_odoriji(text: str) -> str:
+    # Post-conversion odoriji expansion (handles remaining ゝゞヽヾ).
     dakuten = _dakuten_map()
     result = []
     prev = ""
@@ -85,6 +88,30 @@ def _expand_odoriji(text: str) -> str:
         else:
             result.append(ch)
             prev = ch
+    return "".join(result)
+
+
+def _is_hiragana(ch: str) -> bool:
+    return bool(_HIRAGANA_RE.match(ch))
+
+
+def _pre_expand_odoriji(text: str) -> str:
+    # Pre-Mecab expansion for simple cases (when previous char is already hiragana).
+    dakuten = _dakuten_map()
+    result = []
+    prev = ""
+    for ch in text:
+        if ch in ("ゝ", "ヽ"):
+            result.append(prev if _is_hiragana(prev) else ch)
+            continue
+        if ch in ("ゞ", "ヾ"):
+            if _is_hiragana(prev):
+                result.append(dakuten.get(prev, prev))
+            else:
+                result.append(ch)
+            continue
+        result.append(ch)
+        prev = ch
     return "".join(result)
 
 
@@ -125,12 +152,17 @@ def convert_text(
     tagger: MeCab.Tagger,
     expand_odoriji: bool = False,
 ) -> str:
+    # Optional pre-expansion for odoriji before morphological analysis.
+    if expand_odoriji:
+        text = _pre_expand_odoriji(text)
+
     # MeCab returns a string with "surface\tfeature" lines, ending with "EOS".
     parsed = tagger.parse(text)
     if parsed is None:
         return text
 
     out = []
+    prev_reading = ""
     for line in parsed.splitlines():
         if line == "EOS" or not line:
             continue
@@ -138,8 +170,13 @@ def convert_text(
             out.append(line)
             continue
         surface, feature = line.split("\t", 1)
+        # Repeat the previous morpheme for the ideographic iteration mark.
+        if surface == "〳〵" and prev_reading:
+            out.append(prev_reading)
+            continue
         reading = _pick_reading(feature, surface)
         out.append(reading)
+        prev_reading = reading
 
     hira = _kata_to_hira("".join(out))
     if expand_odoriji:
