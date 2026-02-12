@@ -356,6 +356,9 @@ if preview_items:
     selected = st.selectbox("プレビューするファイル", names)
     for name, original, converted in preview_items:
         if name == selected:
-            st.text_area("元ファイル（指定タグ/列）", value=original, height=300)
-            st.text_area("変換後（指定タグ/列）", value=converted, height=300)
+            col_left, col_right = st.columns(2)
+            with col_left:
+                st.text_area("元ファイル（指定タグ/列）", value=original, height=300)
+            with col_right:
+                st.text_area("変換後（指定タグ/列）", value=converted, height=300)
             break
