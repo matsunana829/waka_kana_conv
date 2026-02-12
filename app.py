@@ -391,13 +391,25 @@ with tab_convert:
                         pass
 
                 # チェックタブ用に変換結果を記憶（複数保持）
-                st.session_state["check_xml_pairs"].append(
-                    {
-                        "name": f"{os.path.splitext(name)[0]}.xml",
-                        "original": data,
-                        "converted": xml_bytes,
-                    }
-                )
+                pair_name = f"{os.path.splitext(name)[0]}.xml"
+                replaced = False
+                for idx, pair in enumerate(st.session_state["check_xml_pairs"]):
+                    if pair["name"] == pair_name:
+                        st.session_state["check_xml_pairs"][idx] = {
+                            "name": pair_name,
+                            "original": data,
+                            "converted": xml_bytes,
+                        }
+                        replaced = True
+                        break
+                if not replaced:
+                    st.session_state["check_xml_pairs"].append(
+                        {
+                            "name": pair_name,
+                            "original": data,
+                            "converted": xml_bytes,
+                        }
+                    )
 
             else:
                 st.warning("未対応の拡張子です。")
@@ -519,7 +531,10 @@ with tab_check:
                     if orig_l is not None:
                         import xml.etree.ElementTree as ET
 
-                        orig_snippet = ET.tostring(orig_l, encoding="unicode")
+                        seg_elems = [s for s in orig_l.iter() if _local_name(s.tag) == seg_tag]
+                        orig_snippet = "\n".join(
+                            [ET.tostring(s, encoding="unicode") for s in seg_elems]
+                        )
 
                     edit_targets.append(
                         (l_elem, segs, seg_texts, orig_snippet, xml_id or n_attr or str(line_no))
