@@ -568,12 +568,18 @@ with tab_check:
                         for i in range(5):
                             with cols[i]:
                                 if i in mismatch_idx:
-                                    st.markdown("**不一致**")
+                                    st.markdown(
+                                        f"<span style='color:#d32f2f;font-weight:600;'>seg{i+1}</span>",
+                                        unsafe_allow_html=True,
+                                    )
+                                else:
+                                    st.markdown(f"seg{i+1}")
                                 new_vals.append(
                                     st.text_input(
                                         f"seg{i+1} (#{idx})",
                                         value=seg_texts[i],
                                         key=f"seg_{idx}_{i}",
+                                        label_visibility="collapsed",
                                     )
                                 )
                         edits[str(id(l_elem))] = new_vals
