@@ -88,8 +88,21 @@ def _map_original_l(orig_tree, l_tag: str):
 
 
 def _seg_text(seg) -> str:
-    # seg内のテキストだけ取得（子タグは無視）
-    return "".join(seg.itertext())
+    # seg内のテキストだけ取得（rdg/rtは除外）
+    parts: List[str] = []
+
+    def walk(node):
+        if _local_name(node.tag) in ("rdg", "rt"):
+            return
+        if node.text:
+            parts.append(node.text)
+        for child in list(node):
+            walk(child)
+            if child.tail:
+                parts.append(child.tail)
+
+    walk(seg)
+    return "".join(parts)
 
 
 # 画面設定とタイトル
@@ -97,16 +110,18 @@ st.set_page_config(page_title="仮名変換ツール", layout="wide")
 st.title("仮名変換ツール")
 
 st.markdown(
-    "和歌本文を MeCab + 和歌UniDic で形態素解析し、読み（カタカナ）を抽出してひらがな化します。"
+    "和歌本文を MeCab + 和歌UniDic で形態素解析し、読み抽出して仮名にします。"
 )
 
 # MeCabのインストール案内
-with st.expander("ご使用になる前に（MeCab本体のインストール）", expanded=False):
+with st.expander("ご使用になる前に（MeCab本体及び和歌UniDicのインストール）", expanded=False):
     st.markdown(
         "\n".join(
             [
                 "- `mecab-python3` はPythonのバインディングで、MeCab本体は別途インストールが必要です。",
                 "- Windowsはインストーラ、macOSはHomebrewが一般的です。",
+                "- 和歌UniDicについても別途ダウンロードが必要です。",
+                "- 未インストールの方は、以下のURLを参考にインストールしてください。",
             ]
         )
     )
