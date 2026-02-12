@@ -456,32 +456,17 @@ with tab_check:
                 )
                 edit_targets.append((l_elem, segs, seg_texts, xml_id or n_attr or str(line_no)))
 
-        st.markdown("### 不一致一覧")
-        if mismatch_rows:
-            for row in mismatch_rows:
-                st.write(
-                    f"xml:id={row['xml:id']} / n={row['n']} / line={row['line']} "
-                    f"→ {row['counts']} (期待: {row['expected']})"
-                )
-        else:
-            st.write("不一致はありません。")
-
-        st.markdown("### 構造エラー一覧（seg数が5以外）")
-        if structure_errors:
-            for row in structure_errors:
-                st.write(
-                    f"xml:id={row['xml:id']} / n={row['n']} / line={row['line']} "
-                    f"→ seg数={row['seg_count']}"
-                )
-        else:
-            st.write("構造エラーはありません。")
-
         if mismatch_rows:
             st.markdown("### 不一致の修正")
             with st.form("edit_form"):
                 edits: Dict[str, List[str]] = {}
                 for idx, (l_elem, segs, seg_texts, label) in enumerate(edit_targets):
-                    st.markdown(f"**対象: {label}**")
+                    row = mismatch_rows[idx]
+                    st.markdown(
+                        f"**対象: {label}**  "
+                        f"(xml:id={row['xml:id']} / n={row['n']} / line={row['line']} "
+                        f"/ 文字数={row['counts']} / 期待={row['expected']})"
+                    )
                     cols = st.columns(5)
                     new_vals = []
                     for i in range(5):
@@ -515,3 +500,16 @@ with tab_check:
                     file_name="checked_and_fixed.xml",
                     mime="application/xml",
                 )
+        else:
+            st.markdown("### 不一致の修正")
+            st.write("不一致はありません。")
+
+        st.markdown("### 構造エラー一覧（seg数が5以外）")
+        if structure_errors:
+            for row in structure_errors:
+                st.write(
+                    f"xml:id={row['xml:id']} / n={row['n']} / line={row['line']} "
+                    f"→ seg数={row['seg_count']}"
+                )
+        else:
+            st.write("構造エラーはありません。")
