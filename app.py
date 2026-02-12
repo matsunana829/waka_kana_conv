@@ -110,7 +110,7 @@ st.set_page_config(page_title="仮名変換ツール", layout="wide")
 st.title("仮名変換ツール")
 
 st.markdown(
-    "和歌本文を MeCab + 和歌UniDic で形態素解析し、読み抽出して仮名にします。"
+    "和歌本文を MeCab + 和歌UniDic で形態素解析し、読み（カタカナ）を抽出してひらがな化します。"
 )
 
 # MeCabのインストール案内
@@ -118,9 +118,9 @@ with st.expander("ご使用になる前に（MeCab本体及び和歌UniDicのイ
     st.markdown(
         "\n".join(
             [
-                "- `mecab-python3` はPythonのバインディングで、MeCab本体は別途インストールが必要です。",
+                "- **MeCab本体**は別途インストールが必要です。",
                 "- Windowsはインストーラ、macOSはHomebrewが一般的です。",
-                "- 和歌UniDicについても別途ダウンロードが必要です。",
+                "- **和歌UniDic**についても別途ダウンロードが必要です。",
                 "- 未インストールの方は、以下のURLを参考にインストールしてください。",
             ]
         )
@@ -137,8 +137,8 @@ with st.expander("ご使用になる前に（MeCab本体及び和歌UniDicのイ
     st.markdown("1. ブラウザで以下を開き、和歌UniDic（unidic-waka）のZIPをダウンロード")
     st.code("https://clrd.ninjal.ac.jp/unidic/download_all.html", language="text")
     st.markdown("2. ダウンロードしたZIPを右クリックして「すべて展開」を選択")
-    st.markdown("3. 展開されたフォルダ（例: `unidic-waka`）を分かりやすい場所に置く")
-    st.markdown("   - 例: `C:\\Users\\Nana\\Desktop\\unidic-waka`")
+    st.markdown("3. 展開されたファイルをひとつのフォルダ（フォルダ名の例: `unidic-waka`）にまとめ、分かりやすい場所に置く")
+    st.markdown("   - 例: `C:\\Users\\nanashi\\Desktop\\unidic-waka`")
     st.markdown("4. そのフォルダの中に `dicrc` があることを確認")
 
 # 使い方ガイド
@@ -160,6 +160,20 @@ with st.expander("使い方ガイド", expanded=False):
         )
     )
 
+# チェックモードの説明
+with st.expander("チェックモードについて", expanded=False):
+    st.markdown(
+        "\n".join(
+            [
+                "- MeCabと和歌UniDicによる仮名変換では誤りが生じる可能性があります。",
+                "- 和歌各句が `seg` タグ等で区切られているXMLであれば、文字数を参考に誤りの可能性がある和歌を一覧できます。",
+                "- ただし字余り・字足らずの和歌も検出されます。",
+                "- 誤っていても偶然 5,7,5,7,7 になる場合は検出できません。",
+                "- あくまで補助的なツールとしてご利用ください。",
+            ]
+        )
+    )
+
 # サイドバー設定
 with st.sidebar:
     st.header("設定")
@@ -177,9 +191,9 @@ with st.sidebar:
         value=True,
         help="踊り字を直前文字で展開します。",
     )
-    xml_tag = st.text_input("XML本文タグ名", value="text")
+    xml_tag = st.text_input("XML本文タグ名", value="l")
     csv_column = st.text_input("CSV本文列名", value="text")
-    output_format = st.selectbox("出力形式", ["txt", "csv", "xml"])
+    output_format = st.selectbox("出力形式", ["txt", "csv", "xml"], index=2)
     output_mode = st.selectbox("出力モード", ["ひらがな", "カタカナ"])
     zip_download = st.checkbox("複数ファイルをZIPで一括ダウンロードする", value=False)
     st.caption("docx入力は txt と docx を両方出力します。")
@@ -405,7 +419,7 @@ with tab_convert:
                     except Exception:
                         pass
 
-                # チェックタブ用に変換結果を記憶（複数保持）
+                # チェックタブ用に変換結果を記憶（複数保持・同名は上書き）
                 pair_name = f"{os.path.splitext(name)[0]}.xml"
                 replaced = False
                 for idx, pair in enumerate(st.session_state["check_xml_pairs"]):
@@ -573,7 +587,7 @@ with tab_check:
                         )
                         if orig_snippet:
                             st.text_area(
-                                "もとのXMLデータ（対象行）",
+                                "もとのXMLデータ（segのみ）",
                                 value=orig_snippet,
                                 height=120,
                                 key=f"orig_{idx}",
