@@ -2,12 +2,62 @@
 
 和歌本文を MeCab + 和歌UniDic で形態素解析し、読み（カタカナ）を抽出してひらがな化する Streamlit アプリです。
 
+## ご使用になる前に（MeCab本体のインストール）
+`mecab-python3` は **Pythonのバインディング** であり、**MeCab本体** は別途インストールが必要です。
+
+### Windows
+1. Windows用インストーラを入手してインストール  
+2. `mecabrc` の場所を確認（例: `C:\Program Files\MeCab\etc\mecabrc`）  
+3. 環境変数 `MECABRC` を設定  
+
+参考URL（公式ページおよび入手先）  
+```
+https://taku910.github.io/mecab/
+```
+```
+https://rmecab.jp/new/install-rmecab/
+```
+64bit版の入手先（公式のexeが入手できない場合の代替）  
+```
+https://github.com/ikegami-yukino/mecab/releases/tag/v0.996
+```
+
+### macOS
+Homebrewでインストールするのが簡単です。  
+```
+brew install mecab
+brew install mecab-ipadic
+```
+参考URL  
+```
+https://luteorg.github.io/lute-manual/install/mecab.html
+```
+
+## 和歌UniDicのダウンロードと配置
+1. ダウンロード  
+```
+https://clrd.ninjal.ac.jp/unidic_archive/2512/unidic-waka-v202512.zip
+```
+2. 解凍してフォルダを配置  
+   - 例: `...\unidic-waka\`  
+3. フォルダ内に `dicrc` が存在することを確認  
+
 ## 使い方
-1. 依存関係をインストール
+1. 依存関係をインストール  
    - `pip install -r requirements.txt`
-2. MeCab と和歌UniDic をインストール
-3. アプリを起動
+2. MeCab本体をインストールし、`mecabrc` を設定  
+   - 例: `C:\Program Files\MeCab\etc\mecabrc`
+3. 和歌UniDicを配置  
+   - 例: `...\unidic-waka\`（`dicrc` が存在すること）
+4. アプリを起動  
    - `streamlit run app.py`
+
+## アプリ使い方ガイド
+1. サイドバーで「和歌UniDicのパス」を指定  
+2. 必要なら「mecabrcのパス」を指定（未指定でも環境変数で可）  
+3. XMLの場合は本文タグ名（例: `l` や `seg`）を指定  
+4. 出力形式を選択  
+5. ファイルをアップロードして「変換する」をクリック  
 
 ## 入力形式
 - `.txt` / `.docx` / `.csv` / `.xml`

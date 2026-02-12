@@ -43,12 +43,46 @@ st.markdown(
     "和歌本文を MeCab + 和歌UniDic で形態素解析し、読み（カタカナ）を抽出してひらがな化します。"
 )
 
+# MeCabのインストール案内
+with st.expander("ご使用になる前に（MeCab本体のインストール）", expanded=False):
+    st.markdown(
+        "\n".join(
+            [
+                "- `mecab-python3` はPythonのバインディングで、MeCab本体は別途インストールが必要です。",
+                "- Windowsはインストーラ、macOSはHomebrewが一般的です。",
+            ]
+        )
+    )
+    st.markdown("Windows（ダウンロード先）")
+    st.code("https://github.com/ikegami-yukino/mecab/releases/tag/v0.996", language="text")
+    st.markdown("参考URL")
+    st.code("https://rmecab.jp/new/install-rmecab/", language="text")
+    st.markdown("macOS（Homebrew）")
+    st.code("brew install mecab\nbrew install mecab-ipadic", language="text")
+    st.markdown("参考URL")
+    st.code("https://luteorg.github.io/lute-manual/install/mecab.html", language="text")
+
+# 使い方ガイド
+with st.expander("使い方ガイド", expanded=False):
+    st.markdown(
+        "\n".join(
+            [
+                "1. サイドバーで「和歌UniDicのパス」を指定",
+                "2. 必要なら「mecabrcのパス」を指定（未指定でも環境変数で可）",
+                "3. XMLの場合は本文タグ名（例: `l` や `seg`）を指定",
+                "4. 出力形式を選択",
+                "5. ファイルをアップロードして「変換する」をクリック",
+            ]
+        )
+    )
+
 # サイドバー設定
 with st.sidebar:
     st.header("設定")
     dic_dir = st.text_input(
         "和歌UniDicのパス",
         value=os.path.join(os.getcwd(), "unidic-waka"),
+        help="コンピューター上の、和歌UniDicフォルダのパス（アドレス）を指定してください"
     )
     mecabrc_path = st.text_input(
         "mecabrcのパス（任意）",
