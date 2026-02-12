@@ -22,6 +22,18 @@ def _kata_to_hira(text: str) -> str:
     return "".join(result)
 
 
+def _hira_to_kata(text: str) -> str:
+    # ひらがなをカタカナに変換（それ以外は保持）
+    result = []
+    for ch in text:
+        code = ord(ch)
+        if 0x3041 <= code <= 0x3096:
+            result.append(chr(code + 0x60))
+        else:
+            result.append(ch)
+    return "".join(result)
+
+
 def _pick_reading(feature: str, surface: str) -> str:
     # -Fで「表層\t読み」形式にしているため、featureが読みになっている想定
     if not feature or feature == "*" or feature == surface:
@@ -152,6 +164,7 @@ def convert_text(
     text: str,
     tagger: MeCab.Tagger,
     expand_odoriji: bool = False,
+    output_mode: str = "hiragana",
 ) -> str:
     # 形態素解析の前に踊り字を簡易展開（有効時のみ）
     if expand_odoriji:
@@ -183,4 +196,6 @@ def convert_text(
     if expand_odoriji:
         # かな化後に残った踊り字を展開
         hira = _expand_odoriji(hira)
+    if output_mode == "katakana":
+        return _hira_to_kata(hira)
     return hira

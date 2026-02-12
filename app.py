@@ -42,7 +42,7 @@ st.set_page_config(page_title="仮名変換ツール", layout="wide")
 st.title("仮名変換ツール")
 
 st.markdown(
-    "和歌本文を MeCab + 和歌UniDic で形態素解析し、読み（カタカナ）を抽出してひらがな化します。"
+    "和歌本文を MeCab + 和歌UniDic で形態素解析し、読みを抽出して仮名にします。"
 )
 
 # MeCabのインストール案内
@@ -103,6 +103,7 @@ with st.sidebar:
     xml_tag = st.text_input("XML本文タグ名", value="text")
     csv_column = st.text_input("CSV本文列名", value="text")
     output_format = st.selectbox("出力形式", ["txt", "csv", "xml"])
+    output_mode = st.selectbox("出力モード", ["ひらがな", "カタカナ"])
     zip_download = st.checkbox("複数ファイルをZIPで一括ダウンロードする", value=False)
     st.caption("docx入力は txt と docx を両方出力します。")
 
@@ -135,7 +136,12 @@ if uploaded and st.button("変換する"):
         if ext == ".txt":
             # txt: 全文を変換
             text = read_text_bytes(data)
-            converted = convert_text(text, tagger, expand_odoriji)
+            converted = convert_text(
+                text,
+                tagger,
+                expand_odoriji,
+                "katakana" if output_mode == "カタカナ" else "hiragana",
+            )
             out_bytes, mime = _as_output_bytes(output_format, [converted])
             out_name = f"{os.path.splitext(name)[0]}.{output_format}"
             if zip_download:
@@ -146,7 +152,13 @@ if uploaded and st.button("変換する"):
         elif ext == ".docx":
             # docx: 段落ごとに変換してtxt/docx両方出力
             txt_bytes, docx_bytes = convert_docx_bytes(
-                data, lambda t: convert_text(t, tagger, expand_odoriji)
+                data,
+                lambda t: convert_text(
+                    t,
+                    tagger,
+                    expand_odoriji,
+                    "katakana" if output_mode == "カタカナ" else "hiragana",
+                ),
             )
             base = os.path.splitext(name)[0]
             if zip_download:
@@ -170,7 +182,14 @@ if uploaded and st.button("変換する"):
             # csv: 指定列のみ変換して構造を保持
             try:
                 df = convert_csv_bytes(
-                    data, csv_column, lambda t: convert_text(t, tagger, expand_odoriji)
+                    data,
+                    csv_column,
+                    lambda t: convert_text(
+                        t,
+                        tagger,
+                        expand_odoriji,
+                        "katakana" if output_mode == "カタカナ" else "hiragana",
+                    ),
                 )
             except KeyError as exc:
                 st.error(str(exc))
@@ -202,7 +221,12 @@ if uploaded and st.button("変換する"):
                 xml_bytes = convert_xml_bytes(
                     data,
                     xml_tag,
-                    lambda t: convert_text(t, tagger, expand_odoriji),
+                    lambda t: convert_text(
+                        t,
+                        tagger,
+                        expand_odoriji,
+                        "katakana" if output_mode == "カタカナ" else "hiragana",
+                    ),
                     pre_expand_odoriji=expand_odoriji,
                 )
             except Exception as exc:
