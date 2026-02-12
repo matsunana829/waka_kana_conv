@@ -1,7 +1,7 @@
 import io
 import os
 import zipfile
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import streamlit as st
 
@@ -37,12 +37,49 @@ def _as_output_bytes(
     raise ValueError(f"Unsupported output format: {output_format}")
 
 
+def _local_name(tag: str) -> str:
+    # 名前空間付きタグからローカル名だけを取り出す
+    return tag.split("}", 1)[1] if "}" in tag else tag
+
+
+def _load_xml_with_sourceline(data: bytes):
+    # 行番号を取るためにiterparseを使ってXMLを読み込む
+    import xml.etree.ElementTree as ET
+
+    parser = ET.XMLParser()
+    it = ET.iterparse(io.BytesIO(data), events=("start",), parser=parser)
+    elements = []
+    for _, elem in it:
+        elements.append(elem)
+    tree = ET.ElementTree(elements[0]) if elements else None
+    return tree
+
+
+def _extract_l_and_seg(tree, l_tag: str, seg_tag: str):
+    # <l>とその配下の<seg>を抽出する
+    import xml.etree.ElementTree as ET
+
+    root = tree.getroot()
+    l_items = []
+    for elem in root.iter():
+        if _local_name(elem.tag) != l_tag:
+            continue
+        segs = [s for s in elem.iter() if _local_name(s.tag) == seg_tag]
+        l_items.append((elem, segs))
+    return l_items
+
+
+def _seg_text(seg) -> str:
+    # seg内のテキストだけ取得（子タグは無視）
+    return "".join(seg.itertext())
+
+
 # 画面設定とタイトル
 st.set_page_config(page_title="仮名変換ツール", layout="wide")
 st.title("仮名変換ツール")
 
 st.markdown(
-    "和歌本文を MeCab + 和歌UniDic で形態素解析し、読みを抽出して仮名にします。"
+    "和歌本文を MeCab + 和歌UniDic で形態素解析し、読み（カタカナ）を抽出してひらがな化します。"
 )
 
 # MeCabのインストール案内
@@ -63,6 +100,13 @@ with st.expander("ご使用になる前に（MeCab本体のインストール）
     st.code("brew install mecab\nbrew install mecab-ipadic", language="text")
     st.markdown("参考URL")
     st.code("https://luteorg.github.io/lute-manual/install/mecab.html", language="text")
+    st.markdown("和歌UniDicのダウンロードと配置")
+    st.markdown("1. ブラウザで以下を開き、和歌UniDic（unidic-waka）のZIPをダウンロード")
+    st.code("https://clrd.ninjal.ac.jp/unidic/download_all.html", language="text")
+    st.markdown("2. ダウンロードしたZIPを右クリックして「すべて展開」を選択")
+    st.markdown("3. 展開されたフォルダ（例: `unidic-waka`）を分かりやすい場所に置く")
+    st.markdown("   - 例: `C:\\Users\\Nana\\Desktop\\unidic-waka`")
+    st.markdown("4. そのフォルダの中に `dicrc` があることを確認")
 
 # 使い方ガイド
 with st.expander("使い方ガイド", expanded=False):
@@ -107,258 +151,367 @@ with st.sidebar:
     zip_download = st.checkbox("複数ファイルをZIPで一括ダウンロードする", value=False)
     st.caption("docx入力は txt と docx を両方出力します。")
 
-# 入力ファイルのアップロード
-uploaded = st.file_uploader(
-    "入力ファイル (.txt / .docx / .csv / .xml)",
-    type=["txt", "docx", "csv", "xml"],
-    accept_multiple_files=True,
-)
+tab_convert, tab_check = st.tabs(["変換", "和歌XMLチェック"])
 
 preview_items = []
 
-if uploaded and st.button("変換する"):
-    try:
-        # MeCabの初期化
-        tagger = create_tagger(dic_dir, mecabrc_path or None, 20)
-    except Exception as exc:
-        st.error(f"MeCabの初期化に失敗しました: {exc}")
-        st.stop()
+with tab_convert:
+    uploaded = st.file_uploader(
+        "入力ファイル (.txt / .docx / .csv / .xml)",
+        type=["txt", "docx", "csv", "xml"],
+        accept_multiple_files=True,
+    )
 
-    zip_buffer = io.BytesIO()
-    zip_file = zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED)
+    if uploaded and st.button("変換する"):
+        try:
+            # MeCabの初期化
+            tagger = create_tagger(dic_dir, mecabrc_path or None, 20)
+        except Exception as exc:
+            st.error(f"MeCabの初期化に失敗しました: {exc}")
+            st.stop()
 
-    for file in uploaded:
-        # ファイルごとに処理
-        name = file.name
-        data = file.read()
-        ext = _ext(name)
+        zip_buffer = io.BytesIO()
+        zip_file = zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED)
 
-        st.subheader(name)
+        for file in uploaded:
+            # ファイルごとに処理
+            name = file.name
+            data = file.read()
+            ext = _ext(name)
 
-        if ext == ".txt":
-            # txt: 全文を変換
-            text = read_text_bytes(data)
-            converted = convert_text(
-                text,
-                tagger,
-                expand_odoriji,
-                "katakana" if output_mode == "カタカナ" else "hiragana",
-            )
-            out_bytes, mime = _as_output_bytes(output_format, [converted])
-            out_name = f"{os.path.splitext(name)[0]}.{output_format}"
-            if zip_download:
-                zip_file.writestr(out_name, out_bytes)
-            else:
-                st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
-            preview_items.append((out_name, text, converted))
+            st.subheader(name)
 
-        elif ext == ".docx":
-            # docx: 段落ごとに変換してtxt/docx両方出力
-            txt_bytes, docx_bytes = convert_docx_bytes(
-                data,
-                lambda t: convert_text(
-                    t,
+            if ext == ".txt":
+                # txt: 全文を変換
+                text = read_text_bytes(data)
+                converted = convert_text(
+                    text,
                     tagger,
                     expand_odoriji,
                     "katakana" if output_mode == "カタカナ" else "hiragana",
-                ),
+                )
+                out_bytes, mime = _as_output_bytes(output_format, [converted])
+                out_name = f"{os.path.splitext(name)[0]}.{output_format}"
+                if zip_download:
+                    zip_file.writestr(out_name, out_bytes)
+                else:
+                    st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
+                preview_items.append((out_name, text, converted))
+
+            elif ext == ".docx":
+                # docx: 段落ごとに変換してtxt/docx両方出力
+                txt_bytes, docx_bytes = convert_docx_bytes(
+                    data,
+                    lambda t: convert_text(
+                        t,
+                        tagger,
+                        expand_odoriji,
+                        "katakana" if output_mode == "カタカナ" else "hiragana",
+                    ),
+                )
+                base = os.path.splitext(name)[0]
+                if zip_download:
+                    zip_file.writestr(f"{base}.txt", txt_bytes)
+                    zip_file.writestr(f"{base}.docx", docx_bytes)
+                else:
+                    st.download_button(
+                        "TXTをダウンロード",
+                        data=txt_bytes,
+                        file_name=f"{base}.txt",
+                        mime="text/plain",
+                    )
+                    st.download_button(
+                        "DOCXをダウンロード",
+                        data=docx_bytes,
+                        file_name=f"{base}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    )
+                try:
+                    preview_text = txt_bytes.decode("utf-8-sig", errors="replace")
+                    preview_items.append((f"{base}.txt", preview_text, preview_text))
+                except Exception:
+                    pass
+
+            elif ext == ".csv":
+                # csv: 指定列のみ変換して構造を保持
+                try:
+                    df = convert_csv_bytes(
+                        data,
+                        csv_column,
+                        lambda t: convert_text(
+                            t,
+                            tagger,
+                            expand_odoriji,
+                            "katakana" if output_mode == "カタカナ" else "hiragana",
+                        ),
+                    )
+                except KeyError as exc:
+                    st.error(str(exc))
+                    continue
+                converted_texts = df[csv_column].astype(str).tolist()
+                if output_format == "csv":
+                    out_bytes = write_csv(df)
+                    out_name = f"{os.path.splitext(name)[0]}.csv"
+                    if zip_download:
+                        zip_file.writestr(out_name, out_bytes)
+                    else:
+                        st.download_button(
+                            "ダウンロード",
+                            data=out_bytes,
+                            file_name=out_name,
+                            mime="text/csv",
+                        )
+                    try:
+                        import pandas as _pd
+                        import io as _io
+
+                        src_df = _pd.read_csv(_io.BytesIO(data), encoding="utf-8", engine="python")
+                        original_col = src_df[csv_column].astype(str).tolist()
+                        preview_items.append((out_name, "\n".join(original_col), "\n".join(converted_texts)))
+                    except Exception:
+                        preview_items.append((out_name, "\n".join(converted_texts), "\n".join(converted_texts)))
+                else:
+                    out_bytes, mime = _as_output_bytes(output_format, converted_texts)
+                    out_name = f"{os.path.splitext(name)[0]}.{output_format}"
+                    if zip_download:
+                        zip_file.writestr(out_name, out_bytes)
+                    else:
+                        st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
+                    try:
+                        import pandas as _pd
+                        import io as _io
+
+                        src_df = _pd.read_csv(_io.BytesIO(data), encoding="utf-8", engine="python")
+                        original_col = src_df[csv_column].astype(str).tolist()
+                        preview_items.append((out_name, "\n".join(original_col), "\n".join(converted_texts)))
+                    except Exception:
+                        preview_items.append((out_name, "\n".join(converted_texts), "\n".join(converted_texts)))
+
+            elif ext == ".xml":
+                # xml: 指定タグ配下のテキストのみ変換
+                try:
+                    xml_bytes = convert_xml_bytes(
+                        data,
+                        xml_tag,
+                        lambda t: convert_text(
+                            t,
+                            tagger,
+                            expand_odoriji,
+                            "katakana" if output_mode == "カタカナ" else "hiragana",
+                        ),
+                        pre_expand_odoriji=expand_odoriji,
+                    )
+                except Exception as exc:
+                    st.error(f"XMLの読み込みに失敗しました: {exc}")
+                    continue
+
+                if output_format == "xml":
+                    # xmlとして出力
+                    out_name = f"{os.path.splitext(name)[0]}.xml"
+                    if zip_download:
+                        zip_file.writestr(out_name, xml_bytes)
+                    else:
+                        st.download_button(
+                            "ダウンロード",
+                            data=xml_bytes,
+                            file_name=out_name,
+                            mime="application/xml",
+                        )
+                    try:
+                        import xml.etree.ElementTree as ET
+
+                        orig_root = ET.fromstring(data)
+                        orig_snippets = []
+                        for elem in orig_root.iter():
+                            if _local_name(elem.tag) != xml_tag:
+                                continue
+                            orig_snippets.append(ET.tostring(elem, encoding="unicode"))
+
+                        conv_root = ET.fromstring(xml_bytes)
+                        conv_snippets = []
+                        for elem in conv_root.iter():
+                            if _local_name(elem.tag) != xml_tag:
+                                continue
+                            conv_snippets.append(ET.tostring(elem, encoding="unicode"))
+
+                        preview_items.append((out_name, "\n".join(orig_snippets), "\n".join(conv_snippets)))
+                    except Exception:
+                        pass
+                else:
+                    # xml以外の場合は本文だけを抽出して出力
+                    try:
+                        root = xml_bytes.decode("utf-8")
+                    except UnicodeDecodeError:
+                        root = xml_bytes.decode("utf-8", errors="replace")
+                    texts = []
+                    import xml.etree.ElementTree as ET
+
+                    parsed = ET.fromstring(root)
+                    for elem in parsed.iter():
+                        if _local_name(elem.tag) != xml_tag:
+                            continue
+                        texts.append("".join(elem.itertext()))
+                    out_bytes, mime = _as_output_bytes(output_format, texts)
+                    out_name = f"{os.path.splitext(name)[0]}.{output_format}"
+                    if zip_download:
+                        zip_file.writestr(out_name, out_bytes)
+                    else:
+                        st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
+                    try:
+                        import xml.etree.ElementTree as ET
+
+                        orig_root = ET.fromstring(data)
+                        orig_snippets = []
+                        for elem in orig_root.iter():
+                            if _local_name(elem.tag) != xml_tag:
+                                continue
+                            orig_snippets.append(ET.tostring(elem, encoding="unicode"))
+                        preview_items.append((out_name, "\n".join(orig_snippets), "\n".join(texts)))
+                    except Exception:
+                        pass
+
+            else:
+                st.warning("未対応の拡張子です。")
+
+        if zip_download:
+            zip_file.close()
+            zip_buffer.seek(0)
+            st.download_button(
+                "ZIPをダウンロード",
+                data=zip_buffer.getvalue(),
+                file_name="converted_outputs.zip",
+                mime="application/zip",
             )
-            base = os.path.splitext(name)[0]
-            if zip_download:
-                zip_file.writestr(f"{base}.txt", txt_bytes)
-                zip_file.writestr(f"{base}.docx", docx_bytes)
-            else:
-                st.download_button(
-                    "TXTをダウンロード",
-                    data=txt_bytes,
-                    file_name=f"{base}.txt",
-                    mime="text/plain",
-                )
-                st.download_button(
-                    "DOCXをダウンロード",
-                    data=docx_bytes,
-                    file_name=f"{base}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                )
-            try:
-                preview_text = txt_bytes.decode("utf-8-sig", errors="replace")
-                preview_items.append((f"{base}.txt", preview_text, preview_text))
-            except Exception:
-                pass
 
-        elif ext == ".csv":
-            # csv: 指定列のみ変換して構造を保持
-            try:
-                df = convert_csv_bytes(
-                    data,
-                    csv_column,
-                    lambda t: convert_text(
-                        t,
-                        tagger,
-                        expand_odoriji,
-                        "katakana" if output_mode == "カタカナ" else "hiragana",
-                    ),
+    if preview_items:
+        st.markdown("### プレビュー（元ファイル / 変換後）")
+        names = [name for name, _, _ in preview_items]
+        selected = st.selectbox("プレビューするファイル", names)
+        for name, original, converted in preview_items:
+            if name == selected:
+                col_left, col_right = st.columns(2)
+                with col_left:
+                    st.text_area("元ファイル（指定タグ/列）", value=original, height=300)
+                with col_right:
+                    st.text_area("変換後（指定タグ/列）", value=converted, height=300)
+                break
+
+with tab_check:
+    st.subheader("和歌XMLチェック")
+    check_file = st.file_uploader("XMLファイルをアップロード", type=["xml"])
+    l_tag = st.text_input("行タグ名", value="l")
+    seg_tag = st.text_input("句タグ名", value="seg")
+    check_odoriji = st.checkbox("踊り字を展開して文字数を数える", value=True)
+
+    if check_file and st.button("チェックする"):
+        try:
+            tagger = create_tagger(dic_dir, mecabrc_path or None, 20)
+        except Exception as exc:
+            st.error(f"MeCabの初期化に失敗しました: {exc}")
+            st.stop()
+
+        data = check_file.read()
+        tree = _load_xml_with_sourceline(data)
+        if tree is None:
+            st.error("XMLの読み込みに失敗しました。")
+            st.stop()
+
+        l_items = _extract_l_and_seg(tree, l_tag, seg_tag)
+        mismatch_rows = []
+        structure_errors = []
+        edit_targets = []
+
+        for l_elem, segs in l_items:
+            xml_id = l_elem.attrib.get("{http://www.w3.org/XML/1998/namespace}id", "")
+            n_attr = l_elem.attrib.get("n", "")
+            line_no = getattr(l_elem, "sourceline", None)
+
+            if len(segs) != 5:
+                structure_errors.append(
+                    {
+                        "xml:id": xml_id,
+                        "n": n_attr,
+                        "line": line_no,
+                        "seg_count": len(segs),
+                    }
                 )
-            except KeyError as exc:
-                st.error(str(exc))
-                continue
-            converted_texts = df[csv_column].astype(str).tolist()
-            if output_format == "csv":
-                out_bytes = write_csv(df)
-                out_name = f"{os.path.splitext(name)[0]}.csv"
-                if zip_download:
-                    zip_file.writestr(out_name, out_bytes)
-                else:
-                    st.download_button(
-                        "ダウンロード",
-                        data=out_bytes,
-                        file_name=out_name,
-                        mime="text/csv",
-                    )
-                try:
-                    original_text = read_text_bytes(data)
-                    # 元CSVから指定列だけ抽出してプレビュー
-                    import pandas as _pd
-                    import io as _io
-
-                    src_df = _pd.read_csv(_io.BytesIO(data), encoding="utf-8", engine="python")
-                    original_col = src_df[csv_column].astype(str).tolist()
-                    preview_items.append((out_name, "\n".join(original_col), "\n".join(converted_texts)))
-                except Exception:
-                    preview_items.append((out_name, "\n".join(converted_texts), "\n".join(converted_texts)))
-            else:
-                out_bytes, mime = _as_output_bytes(output_format, converted_texts)
-                out_name = f"{os.path.splitext(name)[0]}.{output_format}"
-                if zip_download:
-                    zip_file.writestr(out_name, out_bytes)
-                else:
-                    st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
-                try:
-                    import pandas as _pd
-                    import io as _io
-
-                    src_df = _pd.read_csv(_io.BytesIO(data), encoding="utf-8", engine="python")
-                    original_col = src_df[csv_column].astype(str).tolist()
-                    preview_items.append((out_name, "\n".join(original_col), "\n".join(converted_texts)))
-                except Exception:
-                    preview_items.append((out_name, "\n".join(converted_texts), "\n".join(converted_texts)))
-
-        elif ext == ".xml":
-            # xml: 指定タグ配下のテキストのみ変換
-            try:
-                xml_bytes = convert_xml_bytes(
-                    data,
-                    xml_tag,
-                    lambda t: convert_text(
-                        t,
-                        tagger,
-                        expand_odoriji,
-                        "katakana" if output_mode == "カタカナ" else "hiragana",
-                    ),
-                    pre_expand_odoriji=expand_odoriji,
-                )
-            except Exception as exc:
-                st.error(f"XMLの読み込みに失敗しました: {exc}")
                 continue
 
-            if output_format == "xml":
-                # xmlとして出力
-                out_name = f"{os.path.splitext(name)[0]}.xml"
-                if zip_download:
-                    zip_file.writestr(out_name, xml_bytes)
-                else:
-                    st.download_button(
-                        "ダウンロード",
-                        data=xml_bytes,
-                        file_name=out_name,
-                        mime="application/xml",
-                    )
-                try:
-                    import xml.etree.ElementTree as ET
+            seg_texts = [_seg_text(s) for s in segs]
+            counts = []
+            for text in seg_texts:
+                hira = convert_text(text, tagger, check_odoriji, "hiragana")
+                counts.append(len(hira))
 
-                    def _local_name(tag: str) -> str:
-                        return tag.split("}", 1)[1] if "}" in tag else tag
+            expected = [5, 7, 5, 7, 7]
+            if counts != expected:
+                mismatch_rows.append(
+                    {
+                        "xml:id": xml_id,
+                        "n": n_attr,
+                        "line": line_no,
+                        "counts": counts,
+                        "expected": expected,
+                    }
+                )
+                edit_targets.append((l_elem, segs, seg_texts, xml_id or n_attr or str(line_no)))
 
-                    # 元XMLの指定タグ要素（構造付き）を抽出
-                    orig_root = ET.fromstring(data)
-                    orig_snippets = []
-                    for elem in orig_root.iter():
-                        if _local_name(elem.tag) != xml_tag:
-                            continue
-                        orig_snippets.append(ET.tostring(elem, encoding="unicode"))
-
-                    # 変換後XMLの指定タグ要素（構造付き）を抽出
-                    conv_root = ET.fromstring(xml_bytes)
-                    conv_snippets = []
-                    for elem in conv_root.iter():
-                        if _local_name(elem.tag) != xml_tag:
-                            continue
-                        conv_snippets.append(ET.tostring(elem, encoding="unicode"))
-
-                    preview_items.append((out_name, "\n".join(orig_snippets), "\n".join(conv_snippets)))
-                except Exception:
-                    pass
-            else:
-                # xml以外の場合は本文だけを抽出して出力
-                try:
-                    root = xml_bytes.decode("utf-8")
-                except UnicodeDecodeError:
-                    root = xml_bytes.decode("utf-8", errors="replace")
-                texts = []
-                import xml.etree.ElementTree as ET
-
-                def _local_name(tag: str) -> str:
-                    return tag.split("}", 1)[1] if "}" in tag else tag
-
-                parsed = ET.fromstring(root)
-                for elem in parsed.iter():
-                    if _local_name(elem.tag) != xml_tag:
-                        continue
-                    texts.append("".join(elem.itertext()))
-                out_bytes, mime = _as_output_bytes(output_format, texts)
-                out_name = f"{os.path.splitext(name)[0]}.{output_format}"
-                if zip_download:
-                    zip_file.writestr(out_name, out_bytes)
-                else:
-                    st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
-                try:
-                    import xml.etree.ElementTree as ET
-
-                    def _local_name(tag: str) -> str:
-                        return tag.split("}", 1)[1] if "}" in tag else tag
-
-                    orig_root = ET.fromstring(data)
-                    orig_snippets = []
-                    for elem in orig_root.iter():
-                        if _local_name(elem.tag) != xml_tag:
-                            continue
-                        orig_snippets.append(ET.tostring(elem, encoding="unicode"))
-                    preview_items.append((out_name, "\n".join(orig_snippets), "\n".join(texts)))
-                except Exception:
-                    pass
-
+        st.markdown("### 不一致一覧")
+        if mismatch_rows:
+            for row in mismatch_rows:
+                st.write(
+                    f"xml:id={row['xml:id']} / n={row['n']} / line={row['line']} "
+                    f"→ {row['counts']} (期待: {row['expected']})"
+                )
         else:
-            st.warning("未対応の拡張子です。")
+            st.write("不一致はありません。")
 
-    if zip_download:
-        zip_file.close()
-        zip_buffer.seek(0)
-        st.download_button(
-            "ZIPをダウンロード",
-            data=zip_buffer.getvalue(),
-            file_name="converted_outputs.zip",
-            mime="application/zip",
-        )
+        st.markdown("### 構造エラー一覧（seg数が5以外）")
+        if structure_errors:
+            for row in structure_errors:
+                st.write(
+                    f"xml:id={row['xml:id']} / n={row['n']} / line={row['line']} "
+                    f"→ seg数={row['seg_count']}"
+                )
+        else:
+            st.write("構造エラーはありません。")
 
-if preview_items:
-    st.markdown("### プレビュー（元ファイル / 変換後）")
-    names = [name for name, _, _ in preview_items]
-    selected = st.selectbox("プレビューするファイル", names)
-    for name, original, converted in preview_items:
-        if name == selected:
-            col_left, col_right = st.columns(2)
-            with col_left:
-                st.text_area("元ファイル（指定タグ/列）", value=original, height=300)
-            with col_right:
-                st.text_area("変換後（指定タグ/列）", value=converted, height=300)
-            break
+        if mismatch_rows:
+            st.markdown("### 不一致の修正")
+            with st.form("edit_form"):
+                edits: Dict[str, List[str]] = {}
+                for idx, (l_elem, segs, seg_texts, label) in enumerate(edit_targets):
+                    st.markdown(f"**対象: {label}**")
+                    cols = st.columns(5)
+                    new_vals = []
+                    for i in range(5):
+                        with cols[i]:
+                            new_vals.append(
+                                st.text_input(
+                                    f"seg{i+1} (#{idx})",
+                                    value=seg_texts[i],
+                                    key=f"seg_{idx}_{i}",
+                                )
+                            )
+                    edits[str(id(l_elem))] = new_vals
+                submitted = st.form_submit_button("修正XMLを生成")
+
+            if submitted:
+                # 編集内容をXMLに反映
+                for l_elem, segs, _, _ in edit_targets:
+                    key = str(id(l_elem))
+                    if key not in edits:
+                        continue
+                    new_vals = edits[key]
+                    for i, seg in enumerate(segs):
+                        seg.text = new_vals[i]
+
+                out_buf = io.BytesIO()
+                tree.write(out_buf, encoding="utf-8", xml_declaration=True)
+                out_buf.seek(0)
+                st.download_button(
+                    "修正済みXMLをダウンロード",
+                    data=out_buf.getvalue(),
+                    file_name="checked_and_fixed.xml",
+                    mime="application/xml",
+                )
