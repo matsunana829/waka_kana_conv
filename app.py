@@ -67,11 +67,16 @@ with st.expander("使い方ガイド", expanded=False):
     st.markdown(
         "\n".join(
             [
-                "1. サイドバーで「和歌UniDicのパス」を指定",
-                "2. 必要なら「mecabrcのパス」を指定（未指定でも環境変数で可）",
-                "3. XMLの場合は本文タグ名（例: `l` や `seg`）を指定",
-                "4. 出力形式を選択",
-                "5. ファイルをアップロードして「変換する」をクリック",
+                "1. 画面左の「設定」にある「和歌UniDicのパス」にフォルダの場所を入れます",
+                "   例: `C:\\Users\\Nana\\Desktop\\unidic-waka`",
+                "   フォルダの場所はエクスプローラーのアドレスバーをコピーすると確実です。",
+                "2. 「mecabrcのパス」は、空欄のままで動けばそのままでOKです",
+                "   エラーが出た場合のみ `C:\\Program Files\\MeCab\\etc\\mecabrc` を入れてください。",
+                "   それでもエラーが出る場合は、コンピューター内のmecabrcがある位置を確認して、和歌UniDicと同様にそのパスを入れてください"
+                "3. 入力ファイルがXMLの場合は「XML本文タグ名」に仮名に変換したい本文のタグ名（例: `l` や `seg`）を入れます",
+                "   入力ファイルがCSVの場合は、「CSV本文列名」に仮名に変換したい本文の列名を入れます"
+                "4. 出力形式（txt / csv / xml）を選びます",
+                "5. 画面中央の「入力ファイル」からファイルを選び、「変換する」を押します",
             ]
         )
     )
@@ -93,9 +98,10 @@ with st.sidebar:
         value=True,
         help="踊り字を直前文字で展開します。",
     )
-    output_format = st.selectbox("出力形式", ["txt", "csv", "xml"])
-    csv_column = st.text_input("CSV本文列名", value="text")
+    
     xml_tag = st.text_input("XML本文タグ名", value="text")
+    csv_column = st.text_input("CSV本文列名", value="text")
+    output_format = st.selectbox("出力形式", ["txt", "csv", "xml"])
     st.caption("docx入力は txt と docx を両方出力します。")
 
 # 入力ファイルのアップロード

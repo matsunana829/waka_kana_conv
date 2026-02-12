@@ -34,13 +34,14 @@ https://luteorg.github.io/lute-manual/install/mecab.html
 ```
 
 ## 和歌UniDicのダウンロードと配置
-1. ダウンロード  
+1. ブラウザで以下を開き、和歌UniDic（unidic-waka）のZIPをダウンロード  
 ```
-https://clrd.ninjal.ac.jp/unidic_archive/2512/unidic-waka-v202512.zip
+https://clrd.ninjal.ac.jp/unidic/download_all.html
 ```
-2. 解凍してフォルダを配置  
-   - 例: `...\unidic-waka\`  
-3. フォルダ内に `dicrc` が存在することを確認  
+2. ダウンロードしたZIPを右クリックして「すべて展開」を選択  
+3. 展開されたフォルダ（例: `unidic-waka`）を分かりやすい場所に置く  
+   - 例: `C:\Users\Nana\Desktop\unidic-waka`  
+4. そのフォルダの中に `dicrc` があることを確認  
 
 ## 使い方
 1. 依存関係をインストール  
@@ -53,11 +54,16 @@ https://clrd.ninjal.ac.jp/unidic_archive/2512/unidic-waka-v202512.zip
    - `streamlit run app.py`
 
 ## アプリ使い方ガイド
-1. サイドバーで「和歌UniDicのパス」を指定  
-2. 必要なら「mecabrcのパス」を指定（未指定でも環境変数で可）  
-3. XMLの場合は本文タグ名（例: `l` や `seg`）を指定  
-4. 出力形式を選択  
-5. ファイルをアップロードして「変換する」をクリック  
+1. 画面左の「設定」にある「和歌UniDicのパス」にフォルダの場所を入れます  
+   - 例: `C:\Users\Nana\Desktop\unidic-waka`  
+   - フォルダの場所はエクスプローラーのアドレスバーをコピーすると確実です。  
+2. 「mecabrcのパス」は、空欄のままで動けばそのままでOKです  
+   - エラーが出た場合のみ `C:\Program Files\MeCab\etc\mecabrc` を入れてください。  
+   - それでもエラーが出る場合は、コンピューター内のmecabrcがある位置を確認して、和歌UniDicと同様にそのパスを入れてください。  
+3. 入力ファイルがXMLの場合は「XML本文タグ名」に仮名に変換したい本文のタグ名（例: `l` や `seg`）を入れます  
+   入力ファイルがCSVの場合は、「CSV本文列名」に仮名に変換したい本文の列名を入れます  
+4. 出力形式（txt / csv / xml）を選びます  
+5. 画面中央の「入力ファイル」からファイルを選び、「変換する」を押します  
 
 ## 入力形式
 - `.txt` / `.docx` / `.csv` / `.xml`
