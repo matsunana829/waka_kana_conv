@@ -51,14 +51,11 @@ def _load_xml_with_sourceline(data: bytes):
     elements = []
     for _, elem in it:
         elements.append(elem)
-    tree = ET.ElementTree(elements[0]) if elements else None
-    return tree
+    return ET.ElementTree(elements[0]) if elements else None
 
 
 def _extract_l_and_seg(tree, l_tag: str, seg_tag: str):
     # <l>とその配下の<seg>を抽出する
-    import xml.etree.ElementTree as ET
-
     root = tree.getroot()
     l_items = []
     for elem in root.iter():
@@ -67,6 +64,27 @@ def _extract_l_and_seg(tree, l_tag: str, seg_tag: str):
         segs = [s for s in elem.iter() if _local_name(s.tag) == seg_tag]
         l_items.append((elem, segs))
     return l_items
+
+
+def _index_l_elements(tree, l_tag: str) -> List:
+    # <l>要素を順番通りに取得する
+    root = tree.getroot()
+    return [e for e in root.iter() if _local_name(e.tag) == l_tag]
+
+
+def _map_original_l(orig_tree, l_tag: str):
+    # xml:id / n / 出現順で元の<l>要素を参照できるようにする
+    id_map: Dict[str, object] = {}
+    n_map: Dict[str, object] = {}
+    ordered = _index_l_elements(orig_tree, l_tag)
+    for elem in ordered:
+        xml_id = elem.attrib.get("{http://www.w3.org/XML/1998/namespace}id", "")
+        n_attr = elem.attrib.get("n", "")
+        if xml_id:
+            id_map[xml_id] = elem
+        if n_attr:
+            n_map[n_attr] = elem
+    return id_map, n_map, ordered
 
 
 def _seg_text(seg) -> str:
@@ -370,6 +388,11 @@ with tab_convert:
                     except Exception:
                         pass
 
+                # チェックタブ用に最後の変換結果を保持
+                st.session_state["check_xml_original"] = data
+                st.session_state["check_xml_converted"] = xml_bytes
+                st.session_state["check_xml_name"] = f"{os.path.splitext(name)[0]}.xml"
+
             else:
                 st.warning("未対応の拡張子です。")
 
@@ -398,118 +421,167 @@ with tab_convert:
 
 with tab_check:
     st.subheader("和歌XMLチェック")
-    check_file = st.file_uploader("XMLファイルをアップロード", type=["xml"])
+    st.markdown("### XMLファイルの指定")
+    orig_file = st.file_uploader("もとのXMLデータ", type=["xml"], key="orig_xml")
+    conv_file = st.file_uploader("かな変換後のXMLデータ", type=["xml"], key="conv_xml")
     l_tag = st.text_input("行タグ名", value="l")
     seg_tag = st.text_input("句タグ名", value="seg")
     check_odoriji = st.checkbox("踊り字を展開して文字数を数える", value=True)
 
-    if check_file and st.button("チェックする"):
-        try:
-            tagger = create_tagger(dic_dir, mecabrc_path or None, 20)
-        except Exception as exc:
-            st.error(f"MeCabの初期化に失敗しました: {exc}")
-            st.stop()
+    use_session = (
+        orig_file is None
+        and conv_file is None
+        and "check_xml_original" in st.session_state
+        and "check_xml_converted" in st.session_state
+    )
+    if use_session:
+        st.info("変換タブで生成したXMLを自動で使用します。")
 
-        data = check_file.read()
-        tree = _load_xml_with_sourceline(data)
-        if tree is None:
-            st.error("XMLの読み込みに失敗しました。")
-            st.stop()
+    if (orig_file and conv_file) or use_session:
+        if st.button("チェックする"):
+            try:
+                tagger = create_tagger(dic_dir, mecabrc_path or None, 20)
+            except Exception as exc:
+                st.error(f"MeCabの初期化に失敗しました: {exc}")
+                st.stop()
 
-        l_items = _extract_l_and_seg(tree, l_tag, seg_tag)
-        mismatch_rows = []
-        structure_errors = []
-        edit_targets = []
+            if use_session:
+                orig_data = st.session_state["check_xml_original"]
+                conv_data = st.session_state["check_xml_converted"]
+            else:
+                orig_data = orig_file.read()
+                conv_data = conv_file.read()
 
-        for l_elem, segs in l_items:
-            xml_id = l_elem.attrib.get("{http://www.w3.org/XML/1998/namespace}id", "")
-            n_attr = l_elem.attrib.get("n", "")
-            line_no = getattr(l_elem, "sourceline", None)
+            orig_tree = _load_xml_with_sourceline(orig_data)
+            conv_tree = _load_xml_with_sourceline(conv_data)
+            if orig_tree is None or conv_tree is None:
+                st.error("XMLの読み込みに失敗しました。")
+                st.stop()
 
-            if len(segs) != 5:
-                structure_errors.append(
-                    {
-                        "xml:id": xml_id,
-                        "n": n_attr,
-                        "line": line_no,
-                        "seg_count": len(segs),
-                    }
-                )
-                continue
+            l_items = _extract_l_and_seg(conv_tree, l_tag, seg_tag)
+            mismatch_rows = []
+            structure_errors = []
+            edit_targets = []
 
-            seg_texts = [_seg_text(s) for s in segs]
-            counts = []
-            for text in seg_texts:
-                hira = convert_text(text, tagger, check_odoriji, "hiragana")
-                counts.append(len(hira))
+            id_map, n_map, ordered = _map_original_l(orig_tree, l_tag)
 
-            expected = [5, 7, 5, 7, 7]
-            if counts != expected:
-                mismatch_rows.append(
-                    {
-                        "xml:id": xml_id,
-                        "n": n_attr,
-                        "line": line_no,
-                        "counts": counts,
-                        "expected": expected,
-                    }
-                )
-                edit_targets.append((l_elem, segs, seg_texts, xml_id or n_attr or str(line_no)))
+            for idx, (l_elem, segs) in enumerate(l_items):
+                xml_id = l_elem.attrib.get("{http://www.w3.org/XML/1998/namespace}id", "")
+                n_attr = l_elem.attrib.get("n", "")
+                line_no = getattr(l_elem, "sourceline", None)
 
-        if mismatch_rows:
-            st.markdown("### 不一致の修正")
-            with st.form("edit_form"):
-                edits: Dict[str, List[str]] = {}
-                for idx, (l_elem, segs, seg_texts, label) in enumerate(edit_targets):
-                    row = mismatch_rows[idx]
-                    st.markdown(
-                        f"**対象: {label}**  "
-                        f"(xml:id={row['xml:id']} / n={row['n']} / line={row['line']} "
-                        f"/ 文字数={row['counts']} / 期待={row['expected']})"
+                if len(segs) != 5:
+                    structure_errors.append(
+                        {
+                            "xml:id": xml_id,
+                            "n": n_attr,
+                            "line": line_no,
+                            "seg_count": len(segs),
+                        }
                     )
-                    cols = st.columns(5)
-                    new_vals = []
-                    for i in range(5):
-                        with cols[i]:
-                            new_vals.append(
-                                st.text_input(
-                                    f"seg{i+1} (#{idx})",
-                                    value=seg_texts[i],
-                                    key=f"seg_{idx}_{i}",
-                                )
+                    continue
+
+                seg_texts = [_seg_text(s) for s in segs]
+                counts = []
+                for text in seg_texts:
+                    hira = convert_text(text, tagger, check_odoriji, "hiragana")
+                    counts.append(len(hira))
+
+                expected = [5, 7, 5, 7, 7]
+                if counts != expected:
+                    mismatch_rows.append(
+                        {
+                            "xml:id": xml_id,
+                            "n": n_attr,
+                            "line": line_no,
+                            "counts": counts,
+                        }
+                    )
+
+                    # 元XML側の<l>を取得
+                    orig_l = None
+                    if xml_id and xml_id in id_map:
+                        orig_l = id_map[xml_id]
+                    elif n_attr and n_attr in n_map:
+                        orig_l = n_map[n_attr]
+                    elif idx < len(ordered):
+                        orig_l = ordered[idx]
+
+                    orig_snippet = ""
+                    if orig_l is not None:
+                        import xml.etree.ElementTree as ET
+
+                        orig_snippet = ET.tostring(orig_l, encoding="unicode")
+
+                    edit_targets.append(
+                        (l_elem, segs, seg_texts, orig_snippet, xml_id or n_attr or str(line_no))
+                    )
+
+            if mismatch_rows:
+                st.markdown("### 不一致の修正")
+                with st.form("edit_form"):
+                    edits: Dict[str, List[str]] = {}
+                    for idx, (l_elem, segs, seg_texts, orig_snippet, label) in enumerate(
+                        edit_targets
+                    ):
+                        row = mismatch_rows[idx]
+                        st.markdown(
+                            f"**対象: {label}**  "
+                            f"(xml:id={row['xml:id']} / n={row['n']} / line={row['line']} "
+                            f"/ 文字数={row['counts']})"
+                        )
+                        if orig_snippet:
+                            st.text_area(
+                                "もとのXMLデータ（対象行）",
+                                value=orig_snippet,
+                                height=120,
+                                key=f"orig_{idx}",
                             )
-                    edits[str(id(l_elem))] = new_vals
-                submitted = st.form_submit_button("修正XMLを生成")
+                        cols = st.columns(5)
+                        new_vals = []
+                        for i in range(5):
+                            with cols[i]:
+                                new_vals.append(
+                                    st.text_input(
+                                        f"seg{i+1} (#{idx})",
+                                        value=seg_texts[i],
+                                        key=f"seg_{idx}_{i}",
+                                    )
+                                )
+                        edits[str(id(l_elem))] = new_vals
+                    submitted = st.form_submit_button("修正XMLを生成")
 
-            if submitted:
-                # 編集内容をXMLに反映
-                for l_elem, segs, _, _ in edit_targets:
-                    key = str(id(l_elem))
-                    if key not in edits:
-                        continue
-                    new_vals = edits[key]
-                    for i, seg in enumerate(segs):
-                        seg.text = new_vals[i]
+                if submitted:
+                    # 編集内容をXMLに反映（変換後XMLに適用）
+                    for l_elem, segs, _, _, _ in edit_targets:
+                        key = str(id(l_elem))
+                        if key not in edits:
+                            continue
+                        new_vals = edits[key]
+                        for i, seg in enumerate(segs):
+                            seg.text = new_vals[i]
 
-                out_buf = io.BytesIO()
-                tree.write(out_buf, encoding="utf-8", xml_declaration=True)
-                out_buf.seek(0)
-                st.download_button(
-                    "修正済みXMLをダウンロード",
-                    data=out_buf.getvalue(),
-                    file_name="checked_and_fixed.xml",
-                    mime="application/xml",
-                )
-        else:
-            st.markdown("### 不一致の修正")
-            st.write("不一致はありません。")
+                    out_buf = io.BytesIO()
+                    conv_tree.write(out_buf, encoding="utf-8", xml_declaration=True)
+                    out_buf.seek(0)
+                    st.download_button(
+                        "修正済みXMLをダウンロード",
+                        data=out_buf.getvalue(),
+                        file_name="checked_and_fixed.xml",
+                        mime="application/xml",
+                    )
+            else:
+                st.markdown("### 不一致の修正")
+                st.write("不一致はありません。")
 
-        st.markdown("### 構造エラー一覧（seg数が5以外）")
-        if structure_errors:
-            for row in structure_errors:
-                st.write(
-                    f"xml:id={row['xml:id']} / n={row['n']} / line={row['line']} "
-                    f"→ seg数={row['seg_count']}"
-                )
-        else:
-            st.write("構造エラーはありません。")
+            st.markdown("### 構造エラー一覧（seg数が5以外）")
+            if structure_errors:
+                for row in structure_errors:
+                    st.write(
+                        f"xml:id={row['xml:id']} / n={row['n']} / line={row['line']} "
+                        f"→ seg数={row['seg_count']}"
+                    )
+            else:
+                st.write("構造エラーはありません。")
+    else:
+        st.info("もとのXMLデータと、かな変換後のXMLデータを両方指定してください。")
