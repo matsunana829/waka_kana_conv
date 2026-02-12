@@ -150,7 +150,7 @@ if uploaded and st.button("変換する"):
                 zip_file.writestr(out_name, out_bytes)
             else:
                 st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
-            preview_items.append((out_name, converted))
+            preview_items.append((out_name, text, converted))
 
         elif ext == ".docx":
             # docx: 段落ごとに変換してtxt/docx両方出力
@@ -182,7 +182,7 @@ if uploaded and st.button("変換する"):
                 )
             try:
                 preview_text = txt_bytes.decode("utf-8-sig", errors="replace")
-                preview_items.append((f"{base}.txt", preview_text))
+                preview_items.append((f"{base}.txt", preview_text, preview_text))
             except Exception:
                 pass
 
@@ -216,10 +216,16 @@ if uploaded and st.button("変換する"):
                         mime="text/csv",
                     )
                 try:
-                    preview_text = out_bytes.decode("utf-8-sig", errors="replace")
-                    preview_items.append((out_name, preview_text))
+                    original_text = read_text_bytes(data)
+                    # 元CSVから指定列だけ抽出してプレビュー
+                    import pandas as _pd
+                    import io as _io
+
+                    src_df = _pd.read_csv(_io.BytesIO(data), encoding="utf-8", engine="python")
+                    original_col = src_df[csv_column].astype(str).tolist()
+                    preview_items.append((out_name, "\n".join(original_col), "\n".join(converted_texts)))
                 except Exception:
-                    pass
+                    preview_items.append((out_name, "\n".join(converted_texts), "\n".join(converted_texts)))
             else:
                 out_bytes, mime = _as_output_bytes(output_format, converted_texts)
                 out_name = f"{os.path.splitext(name)[0]}.{output_format}"
@@ -228,10 +234,14 @@ if uploaded and st.button("変換する"):
                 else:
                     st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
                 try:
-                    preview_text = out_bytes.decode("utf-8-sig", errors="replace")
-                    preview_items.append((out_name, preview_text))
+                    import pandas as _pd
+                    import io as _io
+
+                    src_df = _pd.read_csv(_io.BytesIO(data), encoding="utf-8", engine="python")
+                    original_col = src_df[csv_column].astype(str).tolist()
+                    preview_items.append((out_name, "\n".join(original_col), "\n".join(converted_texts)))
                 except Exception:
-                    pass
+                    preview_items.append((out_name, "\n".join(converted_texts), "\n".join(converted_texts)))
 
         elif ext == ".xml":
             # xml: 指定タグ配下のテキストのみ変換
@@ -264,8 +274,28 @@ if uploaded and st.button("変換する"):
                         mime="application/xml",
                     )
                 try:
-                    preview_text = xml_bytes.decode("utf-8", errors="replace")
-                    preview_items.append((out_name, preview_text))
+                    import xml.etree.ElementTree as ET
+
+                    def _local_name(tag: str) -> str:
+                        return tag.split("}", 1)[1] if "}" in tag else tag
+
+                    # 元XMLの指定タグ要素（構造付き）を抽出
+                    orig_root = ET.fromstring(data)
+                    orig_snippets = []
+                    for elem in orig_root.iter():
+                        if _local_name(elem.tag) != xml_tag:
+                            continue
+                        orig_snippets.append(ET.tostring(elem, encoding="unicode"))
+
+                    # 変換後XMLの指定タグ要素（構造付き）を抽出
+                    conv_root = ET.fromstring(xml_bytes)
+                    conv_snippets = []
+                    for elem in conv_root.iter():
+                        if _local_name(elem.tag) != xml_tag:
+                            continue
+                        conv_snippets.append(ET.tostring(elem, encoding="unicode"))
+
+                    preview_items.append((out_name, "\n".join(orig_snippets), "\n".join(conv_snippets)))
                 except Exception:
                     pass
             else:
@@ -292,8 +322,18 @@ if uploaded and st.button("変換する"):
                 else:
                     st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
                 try:
-                    preview_text = out_bytes.decode("utf-8-sig", errors="replace")
-                    preview_items.append((out_name, preview_text))
+                    import xml.etree.ElementTree as ET
+
+                    def _local_name(tag: str) -> str:
+                        return tag.split("}", 1)[1] if "}" in tag else tag
+
+                    orig_root = ET.fromstring(data)
+                    orig_snippets = []
+                    for elem in orig_root.iter():
+                        if _local_name(elem.tag) != xml_tag:
+                            continue
+                        orig_snippets.append(ET.tostring(elem, encoding="unicode"))
+                    preview_items.append((out_name, "\n".join(orig_snippets), "\n".join(texts)))
                 except Exception:
                     pass
 
@@ -311,10 +351,11 @@ if uploaded and st.button("変換する"):
         )
 
 if preview_items:
-    st.markdown("### 変換結果プレビュー")
-    names = [name for name, _ in preview_items]
+    st.markdown("### プレビュー（元ファイル / 変換後）")
+    names = [name for name, _, _ in preview_items]
     selected = st.selectbox("プレビューするファイル", names)
-    for name, content in preview_items:
+    for name, original, converted in preview_items:
         if name == selected:
-            st.text_area("内容", value=content, height=300)
+            st.text_area("元ファイル（指定タグ/列）", value=original, height=300)
+            st.text_area("変換後（指定タグ/列）", value=converted, height=300)
             break
