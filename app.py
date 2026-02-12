@@ -110,8 +110,10 @@ st.set_page_config(page_title="仮名変換ツール", layout="wide")
 st.title("仮名変換ツール")
 
 st.markdown(
-    "和歌本文を MeCab + 和歌UniDic で形態素解析し、読み（カタカナ）を抽出してひらがな化します。"
+    "和歌本文を MeCab + 和歌UniDic で形態素解析し、読みを抽出して仮名変換します。"
 )
+
+st.warning("⚠ ご使用になる前に（必読）: MeCab本体・和歌UniDicのインストールが必要です。")
 
 # MeCabのインストール案内
 with st.expander("ご使用になる前に（MeCab本体及び和歌UniDicのインストール）", expanded=False):
@@ -137,7 +139,9 @@ with st.expander("ご使用になる前に（MeCab本体及び和歌UniDicのイ
     st.markdown("1. ブラウザで以下を開き、和歌UniDic（unidic-waka）のZIPをダウンロード")
     st.code("https://clrd.ninjal.ac.jp/unidic/download_all.html", language="text")
     st.markdown("2. ダウンロードしたZIPを右クリックして「すべて展開」を選択")
-    st.markdown("3. 展開されたファイルをひとつのフォルダ（フォルダ名の例: `unidic-waka`）にまとめ、分かりやすい場所に置く")
+    st.markdown(
+        "3. 展開されたファイルをひとつのフォルダ（フォルダ名の例: `unidic-waka`）にまとめ、分かりやすい場所に置く"
+    )
     st.markdown("   - 例: `C:\\Users\\nanashi\\Desktop\\unidic-waka`")
     st.markdown("4. そのフォルダの中に `dicrc` があることを確認")
 
