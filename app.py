@@ -114,6 +114,8 @@ uploaded = st.file_uploader(
     accept_multiple_files=True,
 )
 
+preview_items = []
+
 if uploaded and st.button("変換する"):
     try:
         # MeCabの初期化
@@ -148,6 +150,7 @@ if uploaded and st.button("変換する"):
                 zip_file.writestr(out_name, out_bytes)
             else:
                 st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
+            preview_items.append((out_name, converted))
 
         elif ext == ".docx":
             # docx: 段落ごとに変換してtxt/docx両方出力
@@ -177,6 +180,11 @@ if uploaded and st.button("変換する"):
                     file_name=f"{base}.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 )
+            try:
+                preview_text = txt_bytes.decode("utf-8-sig", errors="replace")
+                preview_items.append((f"{base}.txt", preview_text))
+            except Exception:
+                pass
 
         elif ext == ".csv":
             # csv: 指定列のみ変換して構造を保持
@@ -207,6 +215,11 @@ if uploaded and st.button("変換する"):
                         file_name=out_name,
                         mime="text/csv",
                     )
+                try:
+                    preview_text = out_bytes.decode("utf-8-sig", errors="replace")
+                    preview_items.append((out_name, preview_text))
+                except Exception:
+                    pass
             else:
                 out_bytes, mime = _as_output_bytes(output_format, converted_texts)
                 out_name = f"{os.path.splitext(name)[0]}.{output_format}"
@@ -214,6 +227,11 @@ if uploaded and st.button("変換する"):
                     zip_file.writestr(out_name, out_bytes)
                 else:
                     st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
+                try:
+                    preview_text = out_bytes.decode("utf-8-sig", errors="replace")
+                    preview_items.append((out_name, preview_text))
+                except Exception:
+                    pass
 
         elif ext == ".xml":
             # xml: 指定タグ配下のテキストのみ変換
@@ -245,6 +263,11 @@ if uploaded and st.button("変換する"):
                         file_name=out_name,
                         mime="application/xml",
                     )
+                try:
+                    preview_text = xml_bytes.decode("utf-8", errors="replace")
+                    preview_items.append((out_name, preview_text))
+                except Exception:
+                    pass
             else:
                 # xml以外の場合は本文だけを抽出して出力
                 try:
@@ -268,6 +291,11 @@ if uploaded and st.button("変換する"):
                     zip_file.writestr(out_name, out_bytes)
                 else:
                     st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
+                try:
+                    preview_text = out_bytes.decode("utf-8-sig", errors="replace")
+                    preview_items.append((out_name, preview_text))
+                except Exception:
+                    pass
 
         else:
             st.warning("未対応の拡張子です。")
@@ -281,3 +309,12 @@ if uploaded and st.button("変換する"):
             file_name="converted_outputs.zip",
             mime="application/zip",
         )
+
+if preview_items:
+    st.markdown("### 変換結果プレビュー")
+    names = [name for name, _ in preview_items]
+    selected = st.selectbox("プレビューするファイル", names)
+    for name, content in preview_items:
+        if name == selected:
+            st.text_area("内容", value=content, height=300)
+            break
