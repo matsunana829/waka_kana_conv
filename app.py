@@ -172,6 +172,8 @@ with st.sidebar:
 tab_convert, tab_check = st.tabs(["変換", "和歌XMLチェック"])
 
 preview_items = []
+if "check_xml_pairs" not in st.session_state:
+    st.session_state["check_xml_pairs"] = []
 
 with tab_convert:
     uploaded = st.file_uploader(
@@ -388,10 +390,14 @@ with tab_convert:
                     except Exception:
                         pass
 
-                # チェックタブ用に最後の変換結果を保持
-                st.session_state["check_xml_original"] = data
-                st.session_state["check_xml_converted"] = xml_bytes
-                st.session_state["check_xml_name"] = f"{os.path.splitext(name)[0]}.xml"
+                # チェックタブ用に変換結果を記憶（複数保持）
+                st.session_state["check_xml_pairs"].append(
+                    {
+                        "name": f"{os.path.splitext(name)[0]}.xml",
+                        "original": data,
+                        "converted": xml_bytes,
+                    }
+                )
 
             else:
                 st.warning("未対応の拡張子です。")
@@ -428,14 +434,16 @@ with tab_check:
     seg_tag = st.text_input("句タグ名", value="seg")
     check_odoriji = st.checkbox("踊り字を展開して文字数を数える", value=True)
 
-    use_session = (
-        orig_file is None
-        and conv_file is None
-        and "check_xml_original" in st.session_state
-        and "check_xml_converted" in st.session_state
-    )
+    stored_pairs = st.session_state.get("check_xml_pairs", [])
+    use_session = orig_file is None and conv_file is None and len(stored_pairs) > 0
+    selected_pair = None
     if use_session:
-        st.info("変換タブで生成したXMLを自動で使用します。")
+        names = [p["name"] for p in stored_pairs]
+        selected_name = st.selectbox("変換タブで生成したXMLから選択", names)
+        for p in stored_pairs:
+            if p["name"] == selected_name:
+                selected_pair = p
+                break
 
     if (orig_file and conv_file) or use_session:
         if st.button("チェックする"):
@@ -445,9 +453,9 @@ with tab_check:
                 st.error(f"MeCabの初期化に失敗しました: {exc}")
                 st.stop()
 
-            if use_session:
-                orig_data = st.session_state["check_xml_original"]
-                conv_data = st.session_state["check_xml_converted"]
+            if use_session and selected_pair is not None:
+                orig_data = selected_pair["original"]
+                conv_data = selected_pair["converted"]
             else:
                 orig_data = orig_file.read()
                 conv_data = conv_file.read()
