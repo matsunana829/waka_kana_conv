@@ -1,4 +1,6 @@
+import io
 import os
+import zipfile
 from typing import List, Tuple
 
 import streamlit as st
@@ -72,9 +74,9 @@ with st.expander("使い方ガイド", expanded=False):
                 "   フォルダの場所はエクスプローラーのアドレスバーをコピーすると確実です。",
                 "2. 「mecabrcのパス」は、空欄のままで動けばそのままでOKです",
                 "   エラーが出た場合のみ `C:\\Program Files\\MeCab\\etc\\mecabrc` を入れてください。",
-                "   それでもエラーが出る場合は、コンピューター内のmecabrcがある位置を確認して、和歌UniDicと同様にそのパスを入れてください"
+                "   それでもエラーが出る場合は、コンピューター内のmecabrcがある位置を確認して、和歌UniDicと同様にそのパスを入れてください",
                 "3. 入力ファイルがXMLの場合は「XML本文タグ名」に仮名に変換したい本文のタグ名（例: `l` や `seg`）を入れます",
-                "   入力ファイルがCSVの場合は、「CSV本文列名」に仮名に変換したい本文の列名を入れます"
+                "   入力ファイルがCSVの場合は、「CSV本文列名」に仮名に変換したい本文の列名を入れます",
                 "4. 出力形式（txt / csv / xml）を選びます",
                 "5. 画面中央の「入力ファイル」からファイルを選び、「変換する」を押します",
             ]
@@ -87,7 +89,7 @@ with st.sidebar:
     dic_dir = st.text_input(
         "和歌UniDicのパス",
         value=os.path.join(os.getcwd(), "unidic-waka"),
-        help="コンピューター上の、和歌UniDicフォルダのパス（アドレス）を指定してください"
+        help="コンピューター上の、和歌UniDicフォルダのパス（アドレス）を指定してください",
     )
     mecabrc_path = st.text_input(
         "mecabrcのパス（任意）",
@@ -98,10 +100,10 @@ with st.sidebar:
         value=True,
         help="踊り字を直前文字で展開します。",
     )
-    
     xml_tag = st.text_input("XML本文タグ名", value="text")
     csv_column = st.text_input("CSV本文列名", value="text")
     output_format = st.selectbox("出力形式", ["txt", "csv", "xml"])
+    zip_download = st.checkbox("複数ファイルをZIPで一括ダウンロードする", value=False)
     st.caption("docx入力は txt と docx を両方出力します。")
 
 # 入力ファイルのアップロード
@@ -119,6 +121,9 @@ if uploaded and st.button("変換する"):
         st.error(f"MeCabの初期化に失敗しました: {exc}")
         st.stop()
 
+    zip_buffer = io.BytesIO()
+    zip_file = zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED)
+
     for file in uploaded:
         # ファイルごとに処理
         name = file.name
@@ -133,7 +138,10 @@ if uploaded and st.button("変換する"):
             converted = convert_text(text, tagger, expand_odoriji)
             out_bytes, mime = _as_output_bytes(output_format, [converted])
             out_name = f"{os.path.splitext(name)[0]}.{output_format}"
-            st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
+            if zip_download:
+                zip_file.writestr(out_name, out_bytes)
+            else:
+                st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
 
         elif ext == ".docx":
             # docx: 段落ごとに変換してtxt/docx両方出力
@@ -141,18 +149,22 @@ if uploaded and st.button("変換する"):
                 data, lambda t: convert_text(t, tagger, expand_odoriji)
             )
             base = os.path.splitext(name)[0]
-            st.download_button(
-                "TXTをダウンロード",
-                data=txt_bytes,
-                file_name=f"{base}.txt",
-                mime="text/plain",
-            )
-            st.download_button(
-                "DOCXをダウンロード",
-                data=docx_bytes,
-                file_name=f"{base}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            )
+            if zip_download:
+                zip_file.writestr(f"{base}.txt", txt_bytes)
+                zip_file.writestr(f"{base}.docx", docx_bytes)
+            else:
+                st.download_button(
+                    "TXTをダウンロード",
+                    data=txt_bytes,
+                    file_name=f"{base}.txt",
+                    mime="text/plain",
+                )
+                st.download_button(
+                    "DOCXをダウンロード",
+                    data=docx_bytes,
+                    file_name=f"{base}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
 
         elif ext == ".csv":
             # csv: 指定列のみ変換して構造を保持
@@ -167,16 +179,22 @@ if uploaded and st.button("変換する"):
             if output_format == "csv":
                 out_bytes = write_csv(df)
                 out_name = f"{os.path.splitext(name)[0]}.csv"
-                st.download_button(
-                    "ダウンロード",
-                    data=out_bytes,
-                    file_name=out_name,
-                    mime="text/csv",
-                )
+                if zip_download:
+                    zip_file.writestr(out_name, out_bytes)
+                else:
+                    st.download_button(
+                        "ダウンロード",
+                        data=out_bytes,
+                        file_name=out_name,
+                        mime="text/csv",
+                    )
             else:
                 out_bytes, mime = _as_output_bytes(output_format, converted_texts)
                 out_name = f"{os.path.splitext(name)[0]}.{output_format}"
-                st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
+                if zip_download:
+                    zip_file.writestr(out_name, out_bytes)
+                else:
+                    st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
 
         elif ext == ".xml":
             # xml: 指定タグ配下のテキストのみ変換
@@ -194,12 +212,15 @@ if uploaded and st.button("変換する"):
             if output_format == "xml":
                 # xmlとして出力
                 out_name = f"{os.path.splitext(name)[0]}.xml"
-                st.download_button(
-                    "ダウンロード",
-                    data=xml_bytes,
-                    file_name=out_name,
-                    mime="application/xml",
-                )
+                if zip_download:
+                    zip_file.writestr(out_name, xml_bytes)
+                else:
+                    st.download_button(
+                        "ダウンロード",
+                        data=xml_bytes,
+                        file_name=out_name,
+                        mime="application/xml",
+                    )
             else:
                 # xml以外の場合は本文だけを抽出して出力
                 try:
@@ -219,7 +240,20 @@ if uploaded and st.button("変換する"):
                     texts.append("".join(elem.itertext()))
                 out_bytes, mime = _as_output_bytes(output_format, texts)
                 out_name = f"{os.path.splitext(name)[0]}.{output_format}"
-                st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
+                if zip_download:
+                    zip_file.writestr(out_name, out_bytes)
+                else:
+                    st.download_button("ダウンロード", data=out_bytes, file_name=out_name, mime=mime)
 
         else:
             st.warning("未対応の拡張子です。")
+
+    if zip_download:
+        zip_file.close()
+        zip_buffer.seek(0)
+        st.download_button(
+            "ZIPをダウンロード",
+            data=zip_buffer.getvalue(),
+            file_name="converted_outputs.zip",
+            mime="application/zip",
+        )
