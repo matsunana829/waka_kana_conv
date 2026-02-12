@@ -497,6 +497,7 @@ with tab_check:
                             "n": n_attr,
                             "line": line_no,
                             "seg_count": len(segs),
+                            "text": "".join(l_elem.itertext()),
                         }
                     )
                     continue
@@ -548,6 +549,8 @@ with tab_check:
                         edit_targets
                     ):
                         row = mismatch_rows[idx]
+                        expected = [5, 7, 5, 7, 7]
+                        mismatch_idx = [i for i, c in enumerate(row["counts"]) if c != expected[i]]
                         st.markdown(
                             f"**対象: {label}**  "
                             f"(xml:id={row['xml:id']} / n={row['n']} / line={row['line']} "
@@ -564,6 +567,8 @@ with tab_check:
                         new_vals = []
                         for i in range(5):
                             with cols[i]:
+                                if i in mismatch_idx:
+                                    st.markdown("**不一致**")
                                 new_vals.append(
                                     st.text_input(
                                         f"seg{i+1} (#{idx})",
@@ -603,6 +608,12 @@ with tab_check:
                     st.write(
                         f"xml:id={row['xml:id']} / n={row['n']} / line={row['line']} "
                         f"→ seg数={row['seg_count']}"
+                    )
+                    st.text_area(
+                        "lタグ内テキスト",
+                        value=row.get("text", ""),
+                        height=120,
+                        key=f"struct_text_{row['xml:id']}_{row['n']}_{row['line']}",
                     )
             else:
                 st.write("構造エラーはありません。")
