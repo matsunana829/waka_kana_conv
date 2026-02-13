@@ -150,43 +150,6 @@ st.markdown(
     "和歌本文を MeCab + 和歌UniDic で形態素解析し、読みを抽出して仮名変換します。"
 )
 
-st.warning("⚠ ご使用になる前に（必読）: MeCab本体・和歌UniDicのインストールが必要です。")
-
-# MeCabのインストール案内
-with st.expander("ご使用になる前に（MeCab本体及び和歌UniDicのインストール）", expanded=False):
-    st.markdown(
-        "\n".join(
-            [
-                "- **MeCab本体**は別途インストールが必要です。",
-                "- Windowsはインストーラ、macOSはHomebrewが一般的です。",
-                "- **和歌UniDic**についても別途ダウンロードが必要です。",
-                "- 未インストールの方は、以下のURLを参考にインストールしてください。",
-            ]
-        )
-    )
-    st.markdown(
-        "\n".join(
-            [
-                "**Windows（ダウンロード先）**",
-                "- URL先の mecab-0.996-64.exe というファイル（インストーラー）をダウンロードし、ダウンロードされたインストーラーを起動してインストールしてください"
-            ]
-        )
-    )     
-    st.code("https://github.com/ikegami-yukino/mecab/releases/tag/v0.996", language="text")
-    st.markdown("**macOS（Homebrew）**")
-    st.code("brew install mecab\nbrew install mecab-ipadic", language="text")
-    st.markdown("参考URL")
-    st.code("https://luteorg.github.io/lute-manual/install/mecab.html", language="text")
-    st.markdown("**和歌UniDicのダウンロードと配置**")
-    st.markdown("1. ブラウザで以下を開き、和歌UniDic（unidic-waka）のZIPをダウンロード")
-    st.code("https://clrd.ninjal.ac.jp/unidic/download_all.html", language="text")
-    st.markdown("2. ダウンロードしたZIPを右クリックして「すべて展開」を選択")
-    st.markdown(
-        "3. 展開されたファイルをひとつのフォルダ（フォルダ名の例: `unidic-waka`）にまとめ、分かりやすい場所に置く"
-    )
-    st.markdown("   - 例: `C:\\Users\\nanashi\\Desktop\\unidic-waka`")
-    st.markdown("4. そのフォルダの中に `dicrc` があることを確認")
-
 # 使い方ガイド
 with st.expander("使い方ガイド", expanded=False):
     st.markdown(
@@ -236,20 +199,9 @@ with st.expander("チェックモードについて", expanded=False):
 # サイドバー設定
 with st.sidebar:
     st.header("設定")
-    dic_dir = st.text_input(
-        "和歌UniDicのパス",
-        value=os.path.join(os.getcwd(), "unidic-waka"),
-        help="コンピューター上の、和歌UniDicフォルダのパス（アドレス）を指定してください",
-    )
-    auto_download = st.checkbox(
-        "サーバー用: 和歌UniDicを自動取得",
-        value=os.name != "nt",
-        help="サーバー上でUniDicを自動ダウンロードします（無料枠対応）。",
-    )
-    mecabrc_path = st.text_input(
-        "mecabrcのパス（任意）",
-        value=os.environ.get("MECABRC", ""),
-    )
+    dic_dir = os.path.join(os.getcwd(), "unidic-waka")
+    auto_download = True
+    mecabrc_path = os.environ.get("MECABRC", "")
     expand_odoriji = st.checkbox(
         "踊り字（ゝゞヽヾ）を展開する",
         value=True,
