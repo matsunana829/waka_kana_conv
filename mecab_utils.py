@@ -135,6 +135,8 @@ def _default_mecabrc() -> Optional[str]:
     candidates = [
         r"C:\Program Files\MeCab\etc\mecabrc",
         r"C:\Program Files (x86)\MeCab\etc\mecabrc",
+        "/etc/mecabrc",
+        "/usr/local/etc/mecabrc",
     ]
     for path in candidates:
         if os.path.exists(path):

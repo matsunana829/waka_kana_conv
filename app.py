@@ -1,6 +1,7 @@
 import io
 import os
 import zipfile
+import urllib.request
 from typing import Dict, List, Tuple
 
 import streamlit as st
@@ -16,6 +17,9 @@ from io_utils import (
     write_csv,
 )
 from mecab_utils import convert_text, create_tagger
+
+
+_UNIDIC_WAKA_ZIP_URL = "https://clrd.ninjal.ac.jp/unidic_archive/2512/unidic-waka-v202512.zip"
 
 
 def _ext(name: str) -> str:
@@ -103,6 +107,39 @@ def _seg_text(seg) -> str:
 
     walk(seg)
     return "".join(parts)
+
+
+def _has_dicrc(path: str) -> bool:
+    # dicrcがあるフォルダかどうか
+    return bool(path) and os.path.isfile(os.path.join(path, "dicrc"))
+
+
+def _find_dicrc_dir(root: str) -> str:
+    # 配下からdicrcを探してその親フォルダを返す
+    for dirpath, _, filenames in os.walk(root):
+        if "dicrc" in filenames:
+            return dirpath
+    return ""
+
+
+def _ensure_unidic_waka(preferred_dir: str) -> str:
+    # dicrcが無い場合はサーバー側でUniDicを自動取得する
+    if _has_dicrc(preferred_dir):
+        return preferred_dir
+
+    cache_root = os.path.join(os.path.expanduser("~"), ".cache", "waka_kana_conv")
+    target_dir = os.path.join(cache_root, "unidic-waka")
+    if _has_dicrc(target_dir):
+        return target_dir
+
+    os.makedirs(cache_root, exist_ok=True)
+    with urllib.request.urlopen(_UNIDIC_WAKA_ZIP_URL) as resp:
+        zip_data = resp.read()
+    with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
+        zf.extractall(cache_root)
+
+    found = _find_dicrc_dir(cache_root)
+    return found if found else preferred_dir
 
 
 # 画面設定とタイトル
@@ -204,6 +241,11 @@ with st.sidebar:
         value=os.path.join(os.getcwd(), "unidic-waka"),
         help="コンピューター上の、和歌UniDicフォルダのパス（アドレス）を指定してください",
     )
+    auto_download = st.checkbox(
+        "サーバー用: 和歌UniDicを自動取得",
+        value=os.name != "nt",
+        help="サーバー上でUniDicを自動ダウンロードします（無料枠対応）。",
+    )
     mecabrc_path = st.text_input(
         "mecabrcのパス（任意）",
         value=os.environ.get("MECABRC", ""),
@@ -234,9 +276,13 @@ with tab_convert:
     )
 
     if uploaded and st.button("変換する"):
+        dic_dir_to_use = _ensure_unidic_waka(dic_dir) if auto_download else dic_dir
+        if not _has_dicrc(dic_dir_to_use):
+            st.error("和歌UniDicのフォルダに dicrc が見つかりません。パスを確認してください。")
+            st.stop()
         try:
             # MeCabの初期化
-            tagger = create_tagger(dic_dir, mecabrc_path or None, 20)
+            tagger = create_tagger(dic_dir_to_use, mecabrc_path or None, 20)
         except Exception as exc:
             st.error(f"MeCabの初期化に失敗しました: {exc}")
             st.stop()
@@ -510,8 +556,12 @@ with tab_check:
 
     if (orig_file and conv_file) or use_session:
         if st.button("チェックする"):
+            dic_dir_to_use = _ensure_unidic_waka(dic_dir) if auto_download else dic_dir
+            if not _has_dicrc(dic_dir_to_use):
+                st.error("和歌UniDicのフォルダに dicrc が見つかりません。パスを確認してください。")
+                st.stop()
             try:
-                tagger = create_tagger(dic_dir, mecabrc_path or None, 20)
+                tagger = create_tagger(dic_dir_to_use, mecabrc_path or None, 20)
             except Exception as exc:
                 st.error(f"MeCabの初期化に失敗しました: {exc}")
                 st.stop()
