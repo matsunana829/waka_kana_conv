@@ -127,15 +127,20 @@ with st.expander("ご使用になる前に（MeCab本体及び和歌UniDicのイ
             ]
         )
     )
-    st.markdown("Windows（ダウンロード先）")
+    st.markdown(
+        "\n".join(
+            [
+                "**Windows（ダウンロード先）**",
+                "- URL先の mecab-0.996-64.exe というファイル（インストーラー）をダウンロードし、ダウンロードされたインストーラーを起動してインストールしてください"
+            ]
+        )
+    )     
     st.code("https://github.com/ikegami-yukino/mecab/releases/tag/v0.996", language="text")
-    st.markdown("参考URL")
-    st.code("https://rmecab.jp/new/install-rmecab/", language="text")
-    st.markdown("macOS（Homebrew）")
+    st.markdown("**macOS（Homebrew）**")
     st.code("brew install mecab\nbrew install mecab-ipadic", language="text")
     st.markdown("参考URL")
     st.code("https://luteorg.github.io/lute-manual/install/mecab.html", language="text")
-    st.markdown("和歌UniDicのダウンロードと配置")
+    st.markdown("**和歌UniDicのダウンロードと配置**")
     st.markdown("1. ブラウザで以下を開き、和歌UniDic（unidic-waka）のZIPをダウンロード")
     st.code("https://clrd.ninjal.ac.jp/unidic/download_all.html", language="text")
     st.markdown("2. ダウンロードしたZIPを右クリックして「すべて展開」を選択")
@@ -151,15 +156,15 @@ with st.expander("使い方ガイド", expanded=False):
         "\n".join(
             [
                 "1. 画面左の「設定」にある「和歌UniDicのパス」にフォルダの場所を入れます",
-                "   例: `C:\\Users\\Nana\\Desktop\\unidic-waka`",
+                "   例: `C:\\Users\\nanashi\\Desktop\\unidic-waka`",
                 "   フォルダの場所はエクスプローラーのアドレスバーをコピーすると確実です。",
-                "2. 「mecabrcのパス」は、空欄のままで動けばそのままでOKです",
+                "2. 「mecabrcのパス」は、空欄のままで動けばそのままでOKです。",
                 "   エラーが出た場合のみ `C:\\Program Files\\MeCab\\etc\\mecabrc` を入れてください。",
-                "   それでもエラーが出る場合は、コンピューター内のmecabrcがある位置を確認して、和歌UniDicと同様にそのパスを入れてください",
-                "3. 入力ファイルがXMLの場合は「XML本文タグ名」に仮名に変換したい本文のタグ名（例: `l` や `seg`）を入れます",
-                "   入力ファイルがCSVの場合は、「CSV本文列名」に仮名に変換したい本文の列名を入れます",
-                "4. 出力形式（txt / csv / xml）を選びます",
-                "5. 画面中央の「入力ファイル」からファイルを選び、「変換する」を押します",
+                "   それでもエラーが出る場合は、コンピューター内のmecabrcがある位置を確認して、和歌UniDicと同様にそのパスを入れてください。",
+                "3. 入力ファイルがXMLの場合は「XML本文タグ名」に仮名に変換したい本文のタグ名（例: `l` や `seg`）を入れます。",
+                "   入力ファイルがCSVの場合は、「CSV本文列名」に仮名に変換したい本文の列名を入れます。",
+                "4. 出力形式（txt / csv / xml）を選びます。",
+                "5. 画面中央の「入力ファイル」からファイルを選び、「変換する」を押します。",
             ]
         )
     )
