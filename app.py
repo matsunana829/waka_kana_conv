@@ -2,6 +2,7 @@ import io
 import os
 import zipfile
 import urllib.request
+import urllib.error
 from typing import Dict, List, Tuple
 
 import streamlit as st
@@ -133,8 +134,12 @@ def _ensure_unidic_waka(preferred_dir: str) -> str:
         return target_dir
 
     os.makedirs(cache_root, exist_ok=True)
-    with urllib.request.urlopen(_UNIDIC_WAKA_ZIP_URL) as resp:
-        zip_data = resp.read()
+    try:
+        with urllib.request.urlopen(_UNIDIC_WAKA_ZIP_URL, timeout=30) as resp:
+            zip_data = resp.read()
+    except (urllib.error.URLError, OSError) as e:
+        raise RuntimeError(f"辞書データのダウンロードに失敗しました。ネットワーク接続を確認してください。\n詳細: {e}")
+
     with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
         zf.extractall(cache_root)
 
@@ -223,7 +228,12 @@ with tab_convert:
     )
 
     if uploaded and st.button("変換する"):
-        dic_dir_to_use = _ensure_unidic_waka(dic_dir) if auto_download else dic_dir
+        try:
+            dic_dir_to_use = _ensure_unidic_waka(dic_dir) if auto_download else dic_dir
+        except RuntimeError as e:
+            st.error(str(e))
+            st.stop()
+
         if not _has_dicrc(dic_dir_to_use):
             st.error("和歌UniDicのフォルダに dicrc が見つかりません。パスを確認してください。")
             st.stop()
