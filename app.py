@@ -1,5 +1,6 @@
 import io
 import os
+import ssl
 import zipfile
 import urllib.request
 import urllib.error
@@ -134,8 +135,15 @@ def _ensure_unidic_waka(preferred_dir: str) -> str:
         return target_dir
 
     os.makedirs(cache_root, exist_ok=True)
+
+    # SSL検証無効化とUser-Agent設定（ブロック回避用）
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    req = urllib.request.Request(_UNIDIC_WAKA_ZIP_URL, headers={"User-Agent": "Mozilla/5.0"})
+
     try:
-        with urllib.request.urlopen(_UNIDIC_WAKA_ZIP_URL, timeout=30) as resp:
+        with urllib.request.urlopen(req, context=ctx, timeout=60) as resp:
             zip_data = resp.read()
     except (urllib.error.URLError, OSError) as e:
         raise RuntimeError(f"辞書データのダウンロードに失敗しました。ネットワーク接続を確認してください。\n詳細: {e}")
