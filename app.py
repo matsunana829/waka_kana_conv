@@ -146,7 +146,11 @@ def _ensure_unidic_waka(preferred_dir: str) -> str:
         with urllib.request.urlopen(req, context=ctx, timeout=60) as resp:
             zip_data = resp.read()
     except (urllib.error.URLError, OSError) as e:
-        raise RuntimeError(f"辞書データのダウンロードに失敗しました。ネットワーク接続を確認してください。\n詳細: {e}")
+        raise RuntimeError(
+            f"辞書データの自動ダウンロードに失敗しました。\n"
+            f"サイドバーの「辞書の手動設定」から、手元でダウンロードしたZIPファイルをアップロードしてください。\n"
+            f"詳細エラー: {e}"
+        )
 
     with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
         zf.extractall(cache_root)
@@ -221,6 +225,21 @@ with st.sidebar:
     output_mode = st.selectbox("出力モード", ["ひらがな", "カタカナ"])
     zip_download = st.checkbox("複数ファイルをZIPで一括ダウンロードする", value=False)
     st.caption("docx入力は txt と docx を両方出力します。")
+
+    with st.expander("辞書の手動設定（自動DL失敗時）"):
+        st.markdown(
+            "自動ダウンロードが失敗する場合、[公式サイト](https://clrd.ninjal.ac.jp/unidic/download_all.html)から和歌UniDicをダウンロードし、ここにアップロードしてください。"
+        )
+        manual_zip = st.file_uploader("unidic-waka ZIP", type=["zip"], key="manual_dic")
+        if manual_zip:
+            cache_root = os.path.join(os.path.expanduser("~"), ".cache", "waka_kana_conv")
+            os.makedirs(cache_root, exist_ok=True)
+            try:
+                with zipfile.ZipFile(manual_zip) as zf:
+                    zf.extractall(cache_root)
+                st.success("辞書をインストールしました。変換を試してください。")
+            except Exception as e:
+                st.error(f"ZIPの展開に失敗しました: {e}")
 
 tab_convert, tab_check = st.tabs(["変換", "和歌XMLチェック"])
 
